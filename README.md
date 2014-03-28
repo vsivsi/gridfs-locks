@@ -91,7 +91,7 @@ GridFS itself creates [two collections](http://docs.mongodb.org/manual/reference
 
 It uses a [multiple-reader/exclusive-writer model for locking, with a fair write-request scheme](https://en.wikipedia.org/wiki/Readers-writer_lock) to prevent blocking of writes by a continuous stream of readers. There is optional support for lock expiration, attaching metadata to locks (for debugging distributed applications), and waiting to obtain locks with timeout. When waiting for locks, the polling interval is also configurable. All of the above options can be configured globally, or on a per-lock basis. As a bonus, `gridfs-locks` also tracks the number of successful read and write locks granted for each resource.
 
-As with any locking scheme, care must be taken to avoid creating [deadlocks](https://en.wikipedia.org/wiki/Deadlocks), and the built-in lock expiration pattern may be helpful in doing so. Note that the default configuration is that locks never expire, and attempts to obtain unavailable locks return immediately without a valid lock. These behaviors may be changed using the `lockExpiration`, `timeOut` and `pollingInterval` options.
+As with any locking scheme, care must be taken to avoid creating [deadlocks](https://en.wikipedia.org/wiki/Deadlocks), and the built-in lock expiration pattern may be helpful in doing so. Note that the default configuration is that locks never expire, and attempts to obtain unavailable locks invoke the callback immediately without waiting for a lock. These behaviors may be changed using the `lockExpiration`, `timeOut` and `pollingInterval` options.
 
 ## API
 
@@ -107,7 +107,7 @@ LockCollection.create(
     lockExpiration: 300,  // seconds until a lock expires in the database  Default: Never expire
     timeOut: 30,          // seconds to poll when obtaining a lock that is not available.  Default: Do not poll
     pollingInterval: 5,   // seconds between successive attempts to acquire a lock while waiting  Default: 5 sec
-    metaData:             // metadata to store in the lock documents, useful for debugging  Default: null
+    metaData: null        // metadata to store in the lock documents, useful for debugging  Default: null
     w: 1                  // mongodb write-concern  Default: 1
   },
   function (err, lockColl) {
@@ -129,7 +129,7 @@ lock = new Lock(
     lockExpiration: 300,  // seconds until a lock expires in the database  Default: Never expire
     timeOut: 30,          // seconds to poll when obtaining a lock that is not available.  Default: Do not poll
     pollingInterval: 5,   // seconds between successive attempts to acquire a lock while waiting  Default: 5 sec
-    metaData:             // metadata to store in the lock document, useful for debugging  Default: null
+    metaData: null        // metadata to store in the lock document, useful for debugging  Default: null
   }
 );
 
@@ -153,7 +153,7 @@ lock.obtainReadLock(
 Attempt to obtain an exclusive lock on the resource. When a write lock is obtained, there can be no other readers or writers.
 
 ```js
-lock.obtainReadLock(
+lock.obtainWriteLock(
   function (err, l) {
     // err:   any database error
     // l:     the lock document obtained. If null, the attempt failed or timed out
@@ -176,7 +176,7 @@ lock.releaseLock(
 
 ### lock.renewLock()
 
-Reset the lock expiration time to `lockExpiration` seconds from now.
+Need more time? Reset the lock expiration time to `lockExpiration` seconds from now.
 
 ```js
 lock.renewLock(
