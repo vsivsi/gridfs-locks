@@ -16,7 +16,7 @@ However, the GridFS data model says nothing about how to safely synchronize atte
 The official node.js native mongo driver's [GridStore](https://github.com/mongodb/node-mongodb-native/blob/master/docs/gridfs.md) library is only "safe" (won't throw errors and/or corrupt GridFS data files) under two possible scenarios:
 
 1.   Once created, files are strictly read-only. After the initial write, they can never be changed or deleted.
-2.   The application **never** attempts concurrent accesses to a given file.
+2.   The application **never** attempts concurrent accesses to a given file, when one or more accesses write/delete.
 
 Neither of these constraints is acceptable for most real applications likely to be built with node.js using MongoDB. The solution is an efficient and robust locking mechanism to properly synchronize read/write accesses to GridFS files, which is what this package provides.
 
