@@ -78,7 +78,7 @@ db.open(function(err, db) {
       // concurrent writer isn't going to make you crash...
 
       // Don't forget!
-      lock.releaseLock(function (err, res) {});
+      lock2.releaseLock(function (err, res) {});
 
     });
   });
