@@ -93,13 +93,13 @@ var Lock = exports.Lock = function(fileId, lockCollection, options) {
   self.timeCreated = new Date();
   self.pollingInterval = options.pollingInterval || self.lockCollection.pollingInterval;
   self.lockExpiration = options.lockExpiration || self.lockCollection.lockExpiration || 8000000000000; // Never
-  self.lockExpireTime = new Date(self.timeCreated.getTime() + self.lockExpiration*1000);  // Fails in 20000 years
+  self.lockExpireTime = new Date(self.timeCreated.getTime() + self.lockExpiration*1000);  // Fails in 20000 years?!
+  self.timeOut = options.timeOut || self.lockCollection.timeOut || 0; // Default to no timeout
+  self.metaData = options.metaData || self.lockCollection.metaData;
   self.lockType = null;
   self.query = null;
   self.update = null;
   self.heldLock = null;
-  self.timeOut = options.timeOut || 300; // Default to 5 min.
-  self.metaData = options.metaData || self.lockCollection.metaData;
 };
 
 // Release a currently held lock.
@@ -127,7 +127,6 @@ Lock.prototype.releaseLock = function(callback) {
     return callback(new Error("Invalid lockType: " + self.lockType));
   }
   self.collection.findAndModify(query, [], update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
-    // console.log("Released: ", self.lockType, self.fileId);
     self.lockType = null;
     self.query = null;
     self.update = null;
@@ -161,7 +160,6 @@ Lock.prototype.renewLock = function(callback) {
     {$set: {expires: self.lockExpireTime}},
     {w: self.lockCollection.writeConcern, new: true},
     function (err, doc) {
-      console.log("Renewed: ", self.lockType, self.fileId);
       self.heldLock = doc;
       if (err == null && doc == null) {
         err = new Error("Lock document not found in collection");
@@ -226,15 +224,6 @@ Lock.prototype.obtainWriteLock = function(callback) {
     return timeoutQuery(self, function (err, doc) {
       if(err || doc) return callback(err, doc);
       callback(err, null);
-      // Need to clear the write_req since this lock request is timing out
-      // self.collection.findAndModify({files_id: self.fileId},
-      //   [],
-      //   {$set: {write_req: false}},
-      //   {new: true},
-      //   function (err, doc) {
-      //     // Don't return doc, this is a failed lock request
-      //     callback(err, null);
-      // });
     });
   });
 };
@@ -253,7 +242,6 @@ var initializeLockDoc = function (self, callback) {
 // Private function that implements polling for locks in the database
 
 var timeoutQuery = function (self, callback) {
-  // console.log("In timeoutQuery...", self.fileId);
   self.update.$set.expires = self.lockExpireTime = new Date(new Date().getTime() + self.lockExpiration*1000);
   // Read locks can break writelocks with write_req after more than one polling cycle
   if (self.lockType === 'r') {
@@ -263,17 +251,15 @@ var timeoutQuery = function (self, callback) {
   }
   self.collection.findAndModify(self.query, [], self.update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
     self.heldLock = doc;
-    // if (doc) console.log("Got Lock: ", self.lockType, self.fileId);
     if(err || doc) return callback(err, doc);
-    // console.log("Failed to get lock...", self.lockType, self.fileId);
-    // keep trying until timeout
 
+    // keep trying until timeout
     if(new Date() - self.timeCreated > self.timeOut*1000) {
       console.log("Lock request timed out...", self.lockType, self.fileId);
       return callback(null, null);
     } else {
       if (self.lockType === 'w') {
-        // write_req gets set every time because write locks and lock expires clear it
+        // write_req gets set every time because released write locks clear it
         self.collection.findAndModify({files_id: self.fileId, write_req: false},
           [],
           {$set: {write_req: true}},
