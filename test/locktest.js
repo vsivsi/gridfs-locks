@@ -12,9 +12,9 @@
 
   assert = require('assert');
 
-  Lock = require('./index').Lock;
+  Lock = require('../index').Lock;
 
-  LockCollection = require('./index').LockCollection;
+  LockCollection = require('../index').LockCollection;
 
   chunkSize = 256 * 1024;
 

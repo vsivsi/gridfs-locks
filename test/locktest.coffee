@@ -3,8 +3,8 @@ GridStore = require('mongodb').GridStore
 Server = require('mongodb').Server
 ObjectID = require('mongodb').ObjectID
 assert = require('assert')
-Lock = require('./index').Lock
-LockCollection = require('./index').LockCollection
+Lock = require('../index').Lock
+LockCollection = require('../index').LockCollection
 
 chunkSize = 256*1024;  # Standard 256KB chunks
 
