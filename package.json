@@ -5,10 +5,12 @@
   "main": "index.js",
   "dependencies": {},
   "devDependencies": {
-    "mongodb": "~1.3.23"
+    "mongodb": "~1.3.23",
+    "coffee-script": "*",
+    "mocha": "*"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified, requires MongoDB to run/test.\" && exit 1"
+    "test": "make test"
   },
   "repository": {
     "type": "git",

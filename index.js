@@ -4,7 +4,6 @@
      See included LICENSE file for details.
 ************************************************************************/
 
-// Do not create a LockCollection directly using new, use the 'create' static method below
 //
 // Parameters:
 //
@@ -16,21 +15,29 @@
 //    timeOut:          Seconds to poll when obtaining a lock that is not available.  Default: Do not poll
 //    metaData:         side information to store in the lock documents, useful for debugging  Default: null
 //
+// NOTE! -- Do not create a LockCollection directly using new, use the 'create' static method below
+//
 var LockCollection = exports.LockCollection = function(collection, options) {
+
+  var self = this;
+
+  if(!(self instanceof LockCollection) || (!options || !options._created)) {
+    throw new Error("LockCollections must be created using the 'LockCollection.create' static method")
+    return;
+  };
+
   if (typeof collection.find !== 'function') {
-    throw new Error("Do not create a LockCollection directly using 'new', use the 'LockCollection.create' static method")
+    throw new Error("Invalid collection parameter in LockCollection constructor")
     return;
   }
 
-  var self = this;
-  options = options || {};
   self.writeConcern = options.w == null ? 1 : options.w;
-
-  self.timeOut = options.timeOut || 0;  // Locks do not poll by default
-  self.pollingInterval = options.pollingInterval || 5;  // Secs
-  self.lockExpiration = options.lockExpiration || 0; // Never
+  self.timeOut = options.timeOut || 0;                    // Locks do not poll by default
+  self.pollingInterval = options.pollingInterval || 5;    // Secs
+  self.lockExpiration = options.lockExpiration || 0;      // Never
+  self.metaData = options.metaData || null;               // None
   self.collection = collection;
-  self.metaData = options.metaData || null;
+
 };
 
 // Static method for creation / initialization of a new LockCollection object.
@@ -49,15 +56,25 @@ var LockCollection = exports.LockCollection = function(collection, options) {
 // callback: function(err, lockCollection)  Mandatory.
 //
 LockCollection.create = function(db, root, options, callback) {
-  if (typeof db.collection !== 'function') {
+  if (!db || typeof db.collection !== 'function') {
     throw new Error("db is not a valid Mongodb connection object.")
+    return;
+  }
+  if (root && (typeof root !== 'string')) {
+    throw new Error("root must be a string or falsy.")
+    return;
+  }
+  if (typeof callback !== 'function') {
+    throw new Error("A callback function must be provided")
     return;
   }
 
   options = options || {};
+  options._created = true;   // flag that this method was called
   root = root || 'fs';
   collectionName = root + '.locks';
   db.collection(collectionName, function(err, collection) {
+    if(err) return callback(err);
     // Ensure unique files_id so there can only be one lock doc per file
     collection.ensureIndex([['files_id', 1]], {unique:true}, function(err, index) {
       if(err) return callback(err);
