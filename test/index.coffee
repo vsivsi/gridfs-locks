@@ -746,7 +746,7 @@ describe 'gridfs-locks', () ->
 
   describe 'testing under load', () ->
 
-    this.timeout 60000
+    this.timeout 120000
 
     lockColl = null
     locksArray = []
