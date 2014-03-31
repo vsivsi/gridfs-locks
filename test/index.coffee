@@ -110,9 +110,9 @@ describe 'gridfs-locks', () ->
 
     it "should properly record all options", () ->
       l = new Lock fileId, lockColl, { timeOut: 16, pollingInterval: 16, lockExpiration: 16, metaData: 16 }
-      assert.equal l.timeOut, 16
-      assert.equal l.pollingInterval, 16
-      assert.equal l.lockExpiration, 16
+      assert.equal l.timeOut, 16000
+      assert.equal l.pollingInterval, 16000
+      assert.equal l.lockExpiration, 16000
       assert.equal l.metaData, 16
       assert.equal l.lockCollection, lockColl
       assert.equal l.collection, lockColl.collection

@@ -32,10 +32,10 @@ var LockCollection = exports.LockCollection = function(collection, options) {
   }
 
   self.writeConcern = options.w == null ? 1 : options.w;
-  self.timeOut = options.timeOut || 0;                    // Locks do not poll by default
-  self.pollingInterval = options.pollingInterval || 5;    // Secs
-  self.lockExpiration = options.lockExpiration || 0;      // Never
-  self.metaData = options.metaData || null;               // None
+  self.timeOut = options.timeOut || 0;                  // Locks do not poll by default
+  self.pollingInterval = options.pollingInterval || 5;  // 5 secs
+  self.lockExpiration = options.lockExpiration || 0;    // Never
+  self.metaData = options.metaData || null;             // None
   self.collection = collection;
 
 };
@@ -108,10 +108,10 @@ var Lock = exports.Lock = function(fileId, lockCollection, options) {
   self.collection = lockCollection.collection;
   self.fileId = fileId;
   self.timeCreated = new Date();
-  self.pollingInterval = options.pollingInterval || self.lockCollection.pollingInterval;
-  self.lockExpiration = options.lockExpiration || self.lockCollection.lockExpiration || 8000000000000; // Never
-  self.lockExpireTime = new Date(self.timeCreated.getTime() + self.lockExpiration*1000);  // Fails in 20000 years?!
-  self.timeOut = options.timeOut || self.lockCollection.timeOut || 0; // Default to no timeout
+  self.pollingInterval = 1000*(options.pollingInterval || self.lockCollection.pollingInterval);
+  self.lockExpiration = 1000*(options.lockExpiration || self.lockCollection.lockExpiration || 8000000000000); // Never
+  self.lockExpireTime = new Date(self.timeCreated.getTime() + self.lockExpiration);  // Fails in 20000 years?!
+  self.timeOut = 1000*(options.timeOut || self.lockCollection.timeOut || 0); // Default to no timeout
   self.metaData = options.metaData || self.lockCollection.metaData;
   self.lockType = null;
   self.query = null;
@@ -187,7 +187,7 @@ Lock.prototype.renewLock = function(callback) {
   if (!(self.heldLock)) {
     return callback(new Error("Cannot renew an unheld lock."));
   }
-  self.lockExpireTime = new Date(new Date().getTime() + self.lockExpiration*1000);
+  self.lockExpireTime = new Date(new Date().getTime() + self.lockExpiration);
   self.query = null;
   self.collection.findAndModify({files_id: self.fileId},
     [],
@@ -264,15 +264,17 @@ Lock.prototype.obtainWriteLock = function(callback) {
 
     return timeoutQuery(self, function (err, doc) {
       if(err || doc) return callback(err, doc);
-      callback(err, null);
-    });
+      // Clear the write_req flag, since this obtainWriteLock has timed out
+      self.collection.findAndModify({files_id: self.fileId, write_req: true}, [], {$set: {write_req: false }}, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
+        callback(err, null);
+      });
   });
 };
 
 // Private function that ensures an initialized lock doc is in the database
 
 var initializeLockDoc = function (self, callback) {
-  self.lockExpireTime = new Date(new Date().getTime() + self.lockExpiration*1000);
+  self.lockExpireTime = new Date(new Date().getTime() + self.lockExpiration);
   self.collection.findAndModify({files_id: self.fileId},
     [],
     {$setOnInsert: {files_id: self.fileId, expires: self.lockExpireTime, read_locks: 0, write_lock: false, write_req: false, reads: 0, writes: 0, meta: null}},
@@ -283,10 +285,10 @@ var initializeLockDoc = function (self, callback) {
 // Private function that implements polling for locks in the database
 
 var timeoutQuery = function (self, callback) {
-  self.update.$set.expires = self.lockExpireTime = new Date(new Date().getTime() + self.lockExpiration*1000);
+  self.update.$set.expires = self.lockExpireTime = new Date(new Date().getTime() + self.lockExpiration);
   // Read locks can break writelocks with write_req after more than one polling cycle
   if (self.lockType === 'r') {
-    self.query.$or[0].expires.$lt = new Date(new Date() - 2000*self.pollingInterval)
+    self.query.$or[0].expires.$lt = new Date(new Date() - 2*self.pollingInterval)
   } else {
     self.query.$or[0].expires.$lt = new Date();
   }
@@ -295,7 +297,7 @@ var timeoutQuery = function (self, callback) {
     if(err || doc) return callback(err, doc);
 
     // keep trying until timeout
-    if(new Date() - self.timeCreated > self.timeOut*1000) {
+    if(new Date() - self.timeCreated > self.timeOut) {
       console.log("Lock request timed out...", self.lockType, self.fileId);
       return callback(null, null);
     } else {
@@ -307,10 +309,10 @@ var timeoutQuery = function (self, callback) {
           {new: true},
           function (err, doc) {
             if(err) { return callback(err); }
-            return setTimeout(timeoutQuery, self.pollingInterval*1000, self, callback);
+            return setTimeout(timeoutQuery, self.pollingInterval, self, callback);
         });
       } else {
-        return setTimeout(timeoutQuery, self.pollingInterval*1000, self, callback);
+        return setTimeout(timeoutQuery, self.pollingInterval, self, callback);
       }
     }
   });
