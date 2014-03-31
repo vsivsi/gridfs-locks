@@ -245,8 +245,10 @@ Lock.prototype.obtainReadLock = function(callback) {
 //
 // callback: function(err, doc)  Mandatory.
 //     doc: The obtained lock document in the database, or null if the timeout exceeded during polling
+// testingCallback: optional, used by Unit testing to have a hook after the write request is written
+//     no params
 //
-Lock.prototype.obtainWriteLock = function(callback) {
+Lock.prototype.obtainWriteLock = function(callback, testingCallback) {
   var self = this;
   if (typeof callback !== 'function') {
     throw new Error("A callback function must be provided")
@@ -268,6 +270,7 @@ Lock.prototype.obtainWriteLock = function(callback) {
       self.collection.findAndModify({files_id: self.fileId, write_req: true}, [], {$set: {write_req: false }}, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
         callback(err, null);
       });
+    }, testingCallback);
   });
 };
 
@@ -284,7 +287,7 @@ var initializeLockDoc = function (self, callback) {
 
 // Private function that implements polling for locks in the database
 
-var timeoutQuery = function (self, callback) {
+var timeoutQuery = function (self, callback, testingCallback) {
   self.update.$set.expires = self.lockExpireTime = new Date(new Date().getTime() + self.lockExpiration);
   // Read locks can break writelocks with write_req after more than one polling cycle
   if (self.lockType === 'r') {
@@ -309,6 +312,9 @@ var timeoutQuery = function (self, callback) {
           {new: true},
           function (err, doc) {
             if(err) { return callback(err); }
+            if (testingCallback && (typeof testingCallback == 'function')) {
+              setImmediate(testingCallback);
+            }
             return setTimeout(timeoutQuery, self.pollingInterval, self, callback);
         });
       } else {

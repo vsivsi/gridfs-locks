@@ -362,6 +362,195 @@ describe 'gridfs-locks', () ->
             assert.throws (() -> throw e), /Cannot renew an unheld lock/
             done()
 
+  describe 'waiting for locks', () ->
+
+    lockColl = null
+    lock1 = null
+    lock2 = null
+    lock3 = null
+    id = null
+
+    before (done) ->
+      LockCollection.create db, false, { timeOut: 2, pollingInterval: 1 }, (e, lc) ->
+        assert.ifError e
+        lockColl = lc
+        done()
+
+    beforeEach () ->
+      id = new mongo.BSONPure.ObjectID
+      lock1 = Lock id, lockColl, {}
+      lock2 = Lock id, lockColl, {}
+      lock3 = Lock id, lockColl, {}
+      # These are too fast for production, but speed up the tests
+      lock1.pollingInterval = 100
+      lock2.pollingInterval = 100
+      lock3.pollingInterval = 100
+
+    it "should work for a write request waiting on a read lock", (done) ->
+      expectedOrder = "1122"
+      order = ''
+      lock1.obtainReadLock (e, ld) ->
+        assert.ifError e
+        assert ld?
+        order += '1'
+        lock2.obtainWriteLock (e, ld) ->
+          assert.ifError e
+          assert ld?
+          order += '2'
+          lock2.releaseLock (e, ld) ->
+            assert.ifError e
+            assert ld?
+            order += '2'
+            assert.equal order, expectedOrder
+            done()
+        lock1.releaseLock (e, ld) ->
+          assert.ifError e
+          assert ld?
+          order += '1'
+
+    it "should work for a write request waiting on multiple read locks", (done) ->
+      expectedOrder = "122133"
+      order = ''
+      lock1.obtainReadLock (e, ld) ->
+        assert.ifError e
+        assert ld?
+        order += '1'
+        lock2.obtainReadLock (e, ld) ->
+          assert.ifError e
+          assert ld?
+          order += '2'
+          lock3.obtainWriteLock (e, ld) ->
+            assert.ifError e
+            assert ld?
+            order += '3'
+            lock3.releaseLock (e, ld) ->
+              assert.ifError e
+              assert ld?
+              order += '3'
+              assert order is expectedOrder
+              done()
+          lock2.releaseLock (e, ld) ->
+            assert.ifError e
+            assert ld?
+            order += '2'
+            lock1.releaseLock (e, ld) ->
+              assert.ifError e
+              assert ld?
+              order += '1'
+
+    it "should work for a read request waiting on a write lock", (done) ->
+      expectedOrder = "1122"
+      order = ''
+      lock1.obtainWriteLock (e, ld) ->
+        assert.ifError e
+        assert ld?
+        order += '1'
+        lock2.obtainReadLock (e, ld) ->
+          assert.ifError e
+          assert ld?
+          order += '2'
+          lock2.releaseLock (e, ld) ->
+            assert.ifError e
+            assert ld?
+            order += '2'
+            assert.equal order, expectedOrder
+            done()
+        lock1.releaseLock (e, ld) ->
+          assert.ifError e
+          assert ld?
+          order += '1'
+
+    it "should give priority to a write request waiting on a read lock over a subsequent read request", (done) ->
+      expectedOrder = "112233"
+      order = ''
+      lock1.obtainReadLock (e, ld) ->
+        assert.ifError e
+        assert ld?
+        order += '1'
+        lock2.obtainWriteLock ((e, ld) ->
+            assert.ifError e
+            assert ld?
+            order += '2'
+            lock2.releaseLock (e, ld) ->
+              assert.ifError e
+              assert ld?
+              order += '2'),
+          (() -> # This testing callback happens once the lock2 write request is written
+            lock3.obtainReadLock (e, ld) ->
+              assert.ifError e
+              assert ld?
+              order += '3'
+              lock3.releaseLock (e, ld) ->
+                assert.ifError e
+                assert ld?
+                order += '3'
+                assert.equal order, expectedOrder
+                done()
+            lock1.releaseLock (e, ld) ->
+              assert.ifError e
+              assert ld?
+              order += '1')
+
+    it "should give priority to a write request waiting on a write lock over a subsequent read request", (done) ->
+      expectedOrder = "112233"
+      order = ''
+      lock1.obtainWriteLock (e, ld) ->
+        assert.ifError e
+        assert ld?
+        order += '1'
+        lock2.obtainWriteLock ((e, ld) ->
+            assert.ifError e
+            assert ld?
+            order += '2'
+            lock2.releaseLock (e, ld) ->
+              assert.ifError e
+              assert ld?
+              order += '2'),
+          (() -> # This testing callback happens once the lock2 write request is written
+            lock3.obtainReadLock (e, ld) ->
+              assert.ifError e
+              assert ld?
+              order += '3'
+              lock3.releaseLock (e, ld) ->
+                assert.ifError e
+                assert ld?
+                order += '3'
+                assert.equal order, expectedOrder
+                done()
+            lock1.releaseLock (e, ld) ->
+              assert.ifError e
+              assert ld?
+              order += '1')
+
+    it "should allow a read request to proceed when a prior write request times out", (done) ->
+      expectedOrder = "1331"
+      order = ''
+      lock2.timeOut = 250
+      lock1.obtainReadLock (e, ld) ->
+        assert.ifError e
+        assert ld?
+        order += '1'
+        lock2.obtainWriteLock ((e, ld) ->
+            # This write lock request should time out
+            assert.ifError e
+            assert not ld?),
+          (() -> # This testing callback happens once the lock2 write request is written
+            lock3.obtainReadLock (e, ld) ->
+              assert.ifError e
+              assert ld?
+              order += '3'
+              lock3.releaseLock (e, ld) ->
+                assert.ifError e
+                assert ld?
+                order += '3'
+                lock1.releaseLock (e, ld) ->
+                  assert.ifError e
+                  assert ld?
+                  order += '1'
+                  assert.equal order, expectedOrder
+                  done())
+
   after (done) ->
     db.dropDatabase () ->
       db.close true, done
+
