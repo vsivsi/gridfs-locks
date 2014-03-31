@@ -245,10 +245,12 @@ Lock.prototype.obtainReadLock = function(callback) {
 //
 // callback: function(err, doc)  Mandatory.
 //     doc: The obtained lock document in the database, or null if the timeout exceeded during polling
-// testingCallback: optional, used by Unit testing to have a hook after the write request is written
-//     no params
+// testingOptions: Unit Testing options:
+//    testCallback: optional, used by Unit testing to have a hook after the write request is written
+//       no params
+//    testWriteReq: optional, if true, supresses the clearing of the write_req lock when a write lock request times out
 //
-Lock.prototype.obtainWriteLock = function(callback, testingCallback) {
+Lock.prototype.obtainWriteLock = function(callback, testingOptions) {
   var self = this;
   if (typeof callback !== 'function') {
     throw new Error("A callback function must be provided")
@@ -257,20 +259,25 @@ Lock.prototype.obtainWriteLock = function(callback, testingCallback) {
   if (self.heldLock) {
     return callback(new Error("Cannot obtain an already held lock."));
   }
+  testingOptions = testingOptions || {};
   // Ensure that lock document for files_id exists
   initializeLockDoc(self, function (err, doc) {
-    if(err) { return callback(err); }
+    if (err) { return callback(err); }
     self.query = {files_id: self.fileId, $or: [{expires: {$lt: new Date()}, write_req: true}, {write_lock: false, read_locks: 0}]};
     self.update = {$set: {write_lock: true, write_req: false, read_locks: 0, expires: self.lockExpireTime, meta: self.metaData}, $inc:{writes: 1}};
     self.lockType = 'w';
 
     return timeoutQuery(self, function (err, doc) {
-      if(err || doc) return callback(err, doc);
-      // Clear the write_req flag, since this obtainWriteLock has timed out
-      self.collection.findAndModify({files_id: self.fileId, write_req: true}, [], {$set: {write_req: false }}, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
+      if (err || doc) return callback(err, doc);
+      if (!testingOptions.testWriteReq) {
+        // Clear the write_req flag, since this obtainWriteLock has timed out
+        self.collection.findAndModify({files_id: self.fileId, write_req: true}, [], {$set: {write_req: false }}, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
+          callback(err, null);
+        });
+      } else {
         callback(err, null);
-      });
-    }, testingCallback);
+      }
+    }, testingOptions.testingCallback);
   });
 };
 
