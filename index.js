@@ -308,7 +308,6 @@ var timeoutQuery = function (self, callback, testingCallback) {
 
     // keep trying until timeout
     if(new Date() - self.timeCreated > self.timeOut) {
-      console.log("Lock request timed out...", self.lockType, self.fileId);
       return callback(null, null);
     } else {
       if (self.lockType === 'w') {
