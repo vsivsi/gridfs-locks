@@ -197,6 +197,13 @@ describe 'gridfs-locks', () ->
           assert.equal lock2.update, null
           assert.equal lock2.heldLock, null
 
+      describe 'obtainWriteLock', () ->
+        it "should fail to return a valid write lock", (done) ->
+          lock2.obtainWriteLock (e, ld) ->
+            assert.ifError e
+            assert.equal ld, null
+            done()
+
     describe 'obtainWriteLock', () ->
 
       lock1 = null
@@ -238,8 +245,14 @@ describe 'gridfs-locks', () ->
           assert.throws (() -> throw e), /Cannot obtain an already held lock/
           done()
 
-      it "should fail to return a valid second write lock on a different lock object", (done) ->
+      it "should fail to return a valid second write lock", (done) ->
         lock2.obtainWriteLock (e, ld) ->
+          assert.ifError e
+          assert.equal ld, null
+          done()
+
+      it "should fail to return a valid read lock", (done) ->
+        lock2.obtainReadLock (e, ld) ->
           assert.ifError e
           assert.equal ld, null
           done()
