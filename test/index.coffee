@@ -665,6 +665,32 @@ describe 'gridfs-locks', () ->
                 assert.equal order, expectedOrder
                 done())}
 
+    it "should give priority to a write request waiting on a dead write lock over a subsequent read request", (done) ->
+      expectedOrder = "12233"
+      order = ''
+      lock1.obtainWriteLock (e, ld) ->
+        assert.ifError e
+        assert ld?
+        order += '1'
+        lock2.obtainWriteLock ((e, ld) ->
+            assert.ifError e
+            assert ld?
+            order += '2'
+            lock2.releaseLock (e, ld) ->
+              assert.ifError e
+              assert ld?
+              order += '2'),
+          { testingCallback: (() -> # This testing callback happens once the lock2 write request is written
+            lock3.obtainReadLock (e, ld) ->
+              assert.ifError e
+              assert ld?
+              order += '3'
+              lock3.releaseLock (e, ld) ->
+                assert.ifError e
+                assert ld?
+                order += '3'
+                assert.equal order, expectedOrder
+                done())}
 
     it "should allow a read request to proceed when a prior write request dies without releasing write_req", (done) ->
       expectedOrder = "1331"
@@ -693,6 +719,30 @@ describe 'gridfs-locks', () ->
                   order += '1'
                   assert.equal order, expectedOrder
                   done())}
+
+    it "should allow a read request to proceed when a prior write request dies waiting for a dead write lock without releasing write_req", (done) ->
+      expectedOrder = "133"
+      order = ''
+      lock2.timeOut = 150
+      lock1.obtainWriteLock (e, ld) ->
+        assert.ifError e
+        assert ld?
+        order += '1'
+        lock2.obtainWriteLock ((e, ld) ->
+            # This write lock request should time out
+            assert.ifError e
+            assert not ld?),
+          { testWriteReq: true, testingCallback: (() -> # This testing callback happens once the lock2 write request is written
+            lock3.obtainReadLock (e, ld) ->
+              assert.ifError e
+              assert ld?
+              order += '3'
+              lock3.releaseLock (e, ld) ->
+                assert.ifError e
+                assert ld?
+                order += '3'
+                assert.equal order, expectedOrder
+                done())}
 
   after (done) ->
     db.dropDatabase () ->

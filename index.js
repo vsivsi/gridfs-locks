@@ -312,7 +312,7 @@ var timeoutQuery = function (self, callback, testingCallback) {
       return callback(null, null);
     } else {
       if (self.lockType === 'w') {
-        // write_req gets set every time because released write locks clear it
+        // write_req gets set every time because claimed write locks and timed out write requests clear it
         self.collection.findAndModify({files_id: self.fileId, write_req: false},
           [],
           {$set: {write_req: true}},
