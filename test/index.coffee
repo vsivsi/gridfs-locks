@@ -744,6 +744,90 @@ describe 'gridfs-locks', () ->
                 assert.equal order, expectedOrder
                 done())}
 
+  describe 'testing under load', () ->
+
+    this.timeout 60000
+
+    lockColl = null
+    locksArray = []
+    numLocks = 10000
+    writeLockFraction = 0.01
+
+    myTimeout = (t, p, cb) ->
+      setTimeout cb, Math.floor(Math.random()*t), p
+
+    before (done) ->
+      LockCollection.create db, false, { timeOut: 60, pollingInterval: 1, lockExpiration: 1 }, (e, lc) ->
+        assert.ifError e
+        lockColl = lc
+        done()
+
+    beforeEach () ->
+      id = new mongo.BSONPure.ObjectID
+      locksArray = (Lock(id, lockColl, {}) for x in [0...numLocks])
+
+    it 'should accomodate hundreds of simultaneous readers on a resource', (done) ->
+      released = 0
+      for l in locksArray
+        myTimeout 10000, l, (l) ->
+          l.obtainReadLock (e, ld) ->
+            assert.ifError e
+            assert ld?
+            myTimeout 5, l, (l) ->
+              l.releaseLock (e, ld) ->
+                assert.ifError e
+                assert ld?
+                released++
+                done() if released is numLocks
+
+    it 'should accomodate hundreds of simultaneous writers on a resource', (done) ->
+      released = 0
+      currentValue = 0
+      for l, x in locksArray when x < numLocks*writeLockFraction
+        myTimeout 10000, l, (l) ->
+          l.obtainWriteLock (e, ld) ->
+            assert.ifError e
+            assert ld?
+            assert.equal Math.floor(currentValue), currentValue
+            currentValue += 0.5
+            myTimeout 5, l, (l) ->
+              currentValue += 0.5
+              l.releaseLock (e, ld) ->
+                assert.ifError e
+                assert ld?
+                released++
+                done() if released is numLocks*writeLockFraction
+
+    it 'should accomodate hundreds of simultaneous readers/writers on a resource', (done) ->
+      released = 0
+      currentValue = 0
+      for l, x in locksArray
+        myTimeout 10000, l, (l) ->
+          if Math.random() <= writeLockFraction
+            l.obtainWriteLock (e, ld) ->
+              assert.ifError e
+              assert ld?
+              assert.equal Math.floor(currentValue), currentValue
+              currentValue += 0.5
+              myTimeout 5, l, (l) ->
+                currentValue += 0.5
+                l.releaseLock (e, ld) ->
+                  assert.ifError e
+                  assert ld?
+                  released++
+                  done() if released is numLocks
+          else
+            l.obtainReadLock (e, ld) ->
+              assert.ifError e
+              assert ld?
+              assert.equal Math.floor(currentValue), currentValue
+              myTimeout 5, l, (l) ->
+                l.releaseLock (e, ld) ->
+                  assert.ifError e
+                  assert ld?
+                  released++
+                  done() if released is numLocks
+
   after (done) ->
     db.dropDatabase () ->
       db.close true, done
