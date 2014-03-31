@@ -110,7 +110,7 @@ LockCollection.create(
     metaData: null        // metadata to store in the lock documents, useful for debugging  Default: null
     w: 1                  // mongodb write-concern  Default: 1
   },
-  function (err, lockColl) {
+  function (err, lockColl) {  // Required callback
     // err:       any database errors or problems with parameters
     // lockColl:  a LockCollection object if successful
   }
@@ -141,7 +141,7 @@ Attempt to obtain a non-exclusive lock on the resource. There can be multiple si
 
 ```js
 lock.obtainReadLock(
-  function (err, l) {
+  function (err, l) {  // Required callback
     // err:   any database error
     // l:     the lock document obtained. If null, the attempt failed or timed out
   }
@@ -154,7 +154,7 @@ Attempt to obtain an exclusive lock on the resource. When a write lock is obtain
 
 ```js
 lock.obtainWriteLock(
-  function (err, l) {
+  function (err, l) {  // Required callback
     // err:   any database error
     // l:     the lock document obtained. If null, the attempt failed or timed out
   }
@@ -163,11 +163,11 @@ lock.obtainWriteLock(
 
 ### lock.releaseLock()
 
-Release a held lock, either read or write
+Release a held lock, either read or write.
 
 ```js
 lock.releaseLock(
-  function (err, l) {
+  function (err, l) {  // This callback is optional, will throw on error if omitted
     // err:   any database errors or lock document not found
     // l:     the freed lock document
   }
@@ -180,7 +180,7 @@ Need more time? Reset the lock expiration time to `lockExpiration` seconds from 
 
 ```js
 lock.renewLock(
-  function (err, l) {
+  function (err, l) {  // Required callback
     // err:   any database error or lock document not found
     // l:     the lock document obtained.
   }

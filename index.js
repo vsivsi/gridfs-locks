@@ -131,8 +131,21 @@ Lock.prototype.releaseLock = function(callback) {
   var self = this;
   var query = null,
       update = null;
+
+  if (callback && typeof callback !== 'function') {
+    throw new Error("Callback must be a function")
+  }
+
+  function cb(err, doc) {
+    if (callback) {
+      callback(err, doc);
+    } else if (err) {
+      throw err;
+    }
+  }
+
   if (!(self.heldLock)) {
-    return callback(new Error("Cannot release an unheld lock."));
+    return cb(new Error("Cannot release an unheld lock."));
   }
   if(self.lockType === 'r') {
     query = {files_id: self.fileId, read_locks: {$gt: 0}};
@@ -141,7 +154,7 @@ Lock.prototype.releaseLock = function(callback) {
     query = {files_id: self.fileId, write_lock: true};
     update = {$set: {write_lock: false, meta: null}};
   } else {
-    return callback(new Error("Invalid lockType: " + self.lockType));
+    return cb(new Error("Invalid lockType: " + self.lockType));
   }
   self.collection.findAndModify(query, [], update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
     self.lockType = null;
@@ -151,7 +164,7 @@ Lock.prototype.releaseLock = function(callback) {
     if (err == null && doc == null) {
       err = new Error("Lock document not found in collection");
     }
-    callback(err, doc);
+    cb(err, doc);
   });
 };
 
@@ -167,6 +180,10 @@ Lock.prototype.releaseLock = function(callback) {
 //
 Lock.prototype.renewLock = function(callback) {
   var self = this;
+  if (typeof callback !== 'function') {
+    throw new Error("A callback function must be provided")
+    return;
+  }
   if (!(self.heldLock)) {
     return callback(new Error("Cannot renew an unheld lock."));
   }
@@ -199,6 +216,10 @@ Lock.prototype.renewLock = function(callback) {
 //
 Lock.prototype.obtainReadLock = function(callback) {
   var self = this;
+  if (typeof callback !== 'function') {
+    throw new Error("A callback function must be provided")
+    return;
+  }
   if (self.heldLock) {
     return callback(new Error("Cannot obtain an already held lock."));
   }
@@ -226,8 +247,11 @@ Lock.prototype.obtainReadLock = function(callback) {
 //     doc: The obtained lock document in the database, or null if the timeout exceeded during polling
 //
 Lock.prototype.obtainWriteLock = function(callback) {
-
   var self = this;
+  if (typeof callback !== 'function') {
+    throw new Error("A callback function must be provided")
+    return;
+  }
   if (self.heldLock) {
     return callback(new Error("Cannot obtain an already held lock."));
   }
