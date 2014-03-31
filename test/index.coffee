@@ -6,9 +6,8 @@ mongo = require 'mongodb'
 Lock = require('../index').Lock
 LockCollection = require('../index').LockCollection
 
-describe 'test', () ->
+describe 'gridfs-locks', () ->
 
-  id = null
   db = null
 
   before (done) ->
@@ -72,7 +71,58 @@ describe 'test', () ->
           assert.equal lc.metaData, 16
           done()
 
+      it "should have 6 keys", (done) ->
+        LockCollection.create db, null, {}, (e, lc) ->
+          assert.equal Object.keys(lc).length, 6
+          done()
+
   describe 'Lock', () ->
+
+    lockColl = null
+    id = null
+
+    before (done) ->
+      id = new mongo.BSONPure.ObjectID
+      LockCollection.create db, false, {}, (e, lc) ->
+        throw e if e
+        lockColl = lc
+        done()
+
+    it "should be a function", () ->
+      assert 'function' is typeof Lock
+
+    it "should create instances without the new keyword", () ->
+      l = Lock id, lockColl, {}
+      assert instanceof Lock
+
+    it "should have 13 keys", () ->
+      assert.equal Object.keys(new Lock id, lockColl, {}).length, 13
+
+    it "should properly record all options", () ->
+      l = new Lock id, lockColl, { timeOut: 16, pollingInterval: 16, lockExpiration: 16, metaData: 16 }
+      assert.equal l.timeOut, 16
+      assert.equal l.pollingInterval, 16
+      assert.equal l.lockExpiration, 16
+      assert.equal l.metaData, 16
+      assert.equal l.lockCollection, lockColl
+      assert.equal l.collection, lockColl.collection
+      assert.equal l.fileId, id
+
+    it "should create a valid timeCreated Date", () ->
+      l = new Lock id, lockColl, {}
+      assert l.timeCreated instanceof Date
+
+    it "should initialize state keys to null", () ->
+      l = new Lock id, lockColl, {}
+      assert l.lockType is null
+      assert l.query is null
+      assert l.update is null
+      assert l.heldLock is null
+
+    describe 'obtainReadLock', () ->
+    describe 'obtainWriteLock', () ->
+    describe 'releaseLock', () ->
+    describe 'renewLock', () ->
 
   after (done) ->
     db.dropDatabase () ->
