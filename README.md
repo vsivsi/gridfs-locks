@@ -1,6 +1,6 @@
 # gridfs-locks
 
- `gridfs-locks` implements distributed and [fair read/write locking](https://en.wikipedia.org/wiki/Readers-writer_lock) based on [MongoDB](http://www.mongodb.org/), and is specifically designed to make MongoDB's [GridFS](http://docs.mongodb.org/manual/reference/gridfs/) file-store safe for concurrent access. It is a [node.js](http://nodejs.org/) [npm package](https://www.npmjs.org/) built on top of the [native `mongodb` driver](https://www.npmjs.org/package/mongodb), and is compatible with the native [GridStore](https://github.com/mongodb/node-mongodb-native/blob/master/docs/gridfs.md) implementation.
+ `gridfs-locks` implements distributed and [fair read/write locking](https://en.wikipedia.org/wiki/Readers-writer_lock) based on [MongoDB](http://www.mongodb.org/), and is specifically designed to make MongoDB's [GridFS](http://docs.mongodb.org/manual/reference/gridfs/) file-store safe for concurrent access. It is a [node.js](http://nodejs.org/) [npm package](https://www.npmjs.org/package/gridfs-locks) built on top of the [native `mongodb` driver](https://www.npmjs.org/package/mongodb), and is compatible with the native [GridStore](https://github.com/mongodb/node-mongodb-native/blob/master/docs/gridfs.md) implementation.
 
 ## Why?
 
@@ -16,9 +16,9 @@ However, the GridFS data model says nothing about how to safely synchronize atte
 The official node.js native mongo driver's [GridStore](https://github.com/mongodb/node-mongodb-native/blob/master/docs/gridfs.md) library is only "safe" (won't throw errors and/or corrupt GridFS data files) under two possible scenarios:
 
 1.   Once created, files are strictly read-only. After the initial write, they can never be changed or deleted.
-2.   The application **never** attempts concurrent accesses to a given file, when one or more accesses write/delete.
+2.   An application **never** attempts to access a file when any kind of write or delete is also in progress.
 
-Neither of these constraints is acceptable for most real applications likely to be built with node.js using MongoDB. The solution is an efficient and robust locking mechanism to properly synchronize read/write accesses to GridFS files, which is what this package provides.
+Neither of these constraints is acceptable for most real applications likely to be built with node.js using MongoDB. The solution is an efficient and robust locking mechanism to enforce condition #2 above by properly synchronizing read/write accesses. That is what this package provides.
 
 [Redis](http://redis.io/) is an amazing tool and this task could be certainly be done using Redis, but in this case we are already using MongoDB and it also has the capability to get the job done, so adding an unnecessary dependency on another server technology is undesirable.
 
