@@ -2,6 +2,8 @@
 
  `gridfs-locks` implements distributed and [fair read/write locking](https://en.wikipedia.org/wiki/Readers-writer_lock) based on [MongoDB](http://www.mongodb.org/), and is specifically designed to make MongoDB's [GridFS](http://docs.mongodb.org/manual/reference/gridfs/) file-store safe for concurrent access. It is a [node.js](http://nodejs.org/) [npm package](https://www.npmjs.org/package/gridfs-locks) built on top of the [native `mongodb` driver](https://www.npmjs.org/package/mongodb), and is compatible with the native [GridStore](https://github.com/mongodb/node-mongodb-native/blob/master/docs/gridfs.md) implementation.
 
+NOTE: if you are a [gridfs-stream](https://www.npmjs.org/package/gridfs-stream) user, but need the locking capabilities of this package, you should check out [gridfs-locking-stream](https://www.npmjs.org/package/gridfs-locking-stream). It is basically gridfs-stream + gridfs-locks
+
 ## Why?
 
 I know what you're thinking:
