@@ -9,7 +9,7 @@ NOTE: if you are a [gridfs-stream](https://www.npmjs.org/package/gridfs-stream) 
 I know what you're thinking:
 -   why does there need to be yet another locking library for node?
 -   why not do this using [Redis](http://redis.io/), or better yet use one of the [existing Redis solutions](https://github.com/search?q=redis+locks&search_target=global)?
--   wait, safe concurrent access [isn't baked into MongoDB GridFS](https://jira.mongodb.org/browse/NODE-157)?
+-   wait, safe concurrent access [isn't already baked into MongoDB GridFS](https://jira.mongodb.org/browse/NODE-157)?
 
 I'll answer these in reverse order... GridFS is MongoDB's file store technology; really it's just a bunch of "data model" conventions making it possible to store binary blobs of arbitrarily large non-JSON data in MongoDB collections. And it's totally useful.
 
