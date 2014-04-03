@@ -337,20 +337,20 @@ describe 'gridfs-locks', () ->
           assert ld?
           done()
 
-      it "should require a callback function", () ->
-        assert.throws (() -> lock1.renewLock()), /A callback function must be provided/
+      afterEach () ->
+        lock1.removeAllListeners()
 
       it "should successfully extend the lock time", (done) ->
         expiresBefore = lock1.heldLock.expires
-        lock1.renewLock (e, ld) ->
+        lock1.renewLock() .on 'renewed', (ld) ->
           assert expiresBefore < ld.expires
           assert.equal ld.expires, lock1.heldLock.expires
           done()
 
       it "should fail to renew an unheld lock", (done) ->
-        lock1.releaseLock().on 'released', (e, ld) ->
-          lock1.renewLock (e, ld) ->
-            assert.throws (() -> throw e), /Cannot renew an unheld lock/
+        lock1.releaseLock().on 'released', (ld) ->
+          lock1.renewLock().on 'error', (e) ->
+            assert.throws (() -> throw e), /cannot renew an unheld lock/
             done()
 
   describe 'waiting for locks', () ->

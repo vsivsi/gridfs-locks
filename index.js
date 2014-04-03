@@ -127,10 +127,13 @@ Lock.prototype._emitError = function emitError(err) {
 
 // Release a currently held lock.
 //
-// Parameters:
+// Parameters:  None
 //
-// callback: function(err, doc)  Mandatory.
-//     doc: The new unheld lock document in the database
+// Emits:
+//    'released':
+//         doc: The new unheld lock document in the database
+//    'error':
+//         err: Any error that occurs
 //
 Lock.prototype.releaseLock = function () {
 
@@ -171,19 +174,18 @@ Lock.prototype.releaseLock = function () {
 // This method is useful to keep alive the locks of longer running operations, permitting the default
 // lockExpiration on a LockCollection to be relatively short so that dead locks may be eliminated.
 //
-// Parameters:
+// Parameters:  None
 //
-// callback: function(err, doc)  Mandatory.
-//     doc: The renewed lock document in the database
+// Emits:
+//    'renewed':
+//         doc: The new unheld lock document in the database
+//    'error':
+//         err: Any error that occurs
 //
-Lock.prototype.renewLock = function(callback) {
+Lock.prototype.renewLock = function() {
   var self = this;
-  if (typeof callback !== 'function') {
-    throw new Error("A callback function must be provided")
-    return;
-  }
   if (!(self.heldLock)) {
-    return callback(new Error("Cannot renew an unheld lock."));
+    return self._emitError("Lock.renewLock cannot renew an unheld lock.");
   }
   self.lockExpireTime = new Date(new Date().getTime() + self.lockExpiration);
   self.query = null;
@@ -192,12 +194,14 @@ Lock.prototype.renewLock = function(callback) {
     {$set: {expires: self.lockExpireTime}},
     {w: self.lockCollection.writeConcern, new: true},
     function (err, doc) {
+      if (err) { return self._emitError(err); }
       self.heldLock = doc;
-      if (err == null && doc == null) {
-        err = new Error("Lock document not found in collection");
+      if (doc == null) {
+        return self._emitError("Lock.renewLock document not found in collection");
       }
-      callback(err, doc);
+      self.emit('renewed', doc);
     });
+  return self;
 };
 
 // Attempt to obtain a read (non-exclusive) lock on a resource
