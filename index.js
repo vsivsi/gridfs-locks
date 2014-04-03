@@ -117,15 +117,22 @@ Lock.prototype = eventEmitter.prototype;
 
 // Release a currently held lock.
 //
-// Parameters:  None
+// Parameters:
+//
+// remove:  Boolean, when true the lock document is released and removed. true is only valid for write locks.
 //
 // Emits:
 //    'released':
 //         doc: The new unheld lock document in the database
+//    'removed':
+//         null: The lock document has been removed
 //    'error':
 //         err: Any error that occurs
 //
-Lock.prototype.releaseLock = function () {
+
+// WIP: Add removeLock
+// WIP: Add logic for both Readlock release cases
+Lock.prototype.releaseLock = function (remove) {
 
   var self = this;
   var query = null,
@@ -134,12 +141,13 @@ Lock.prototype.releaseLock = function () {
   if (!(self.heldLock)) {
     return emitError(self, "Lock.releaseLock cannot release an unheld lock.");
   }
+  // self.timeCreated = new Date();
   if(self.lockType === 'r') {
     query = {files_id: self.fileId, read_locks: {$gt: 0}};
     update = {$inc: {read_locks: -1}, $set: {meta: null}};
   } else if(self.lockType[0] === 'w') {
     query = {files_id: self.fileId, write_lock: true};
-    update = {$set: {write_lock: false, meta: null}};
+    update = {$set: {write_lock: false, expires: self.timeCreated, meta: null}};
   } else {
     return emitError(self, "Lock.releaseLock invalid lockType.");
   }

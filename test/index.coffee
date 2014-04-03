@@ -678,6 +678,34 @@ describe 'gridfs-locks', () ->
                 assert.equal order, expectedOrder
                 done());
 
+    it "of a new read lock shouldn't be affected by when the previous write lock was due to expire", (done) ->
+      lock1.lockExpiration = 0  # Never expires
+      lock1.obtainWriteLock().on 'locked', (ld) ->
+        assert ld?
+        lock1.releaseLock().on 'released', (ld) ->
+          assert ld?
+          lock2.obtainReadLock().on 'locked', (ld) ->
+            assert ld?
+            console.log ld.expires.getTime(), lock2.lockExpireTime.getTime()
+            assert ld.expires.getTime() is lock2.lockExpireTime.getTime()
+            lock2.releaseLock().on 'released', (ld) ->
+              assert ld?
+              done()
+
+    it "of a new read lock shouldn't be affected by when the previous read lock was due to expire", (done) ->
+      lock1.lockExpiration = 0  # Never expires
+      lock1.obtainReadLock().on 'locked', (ld) ->
+        assert ld?
+        lock1.releaseLock().on 'released', (ld) ->
+          assert ld?
+          lock2.obtainReadLock().on 'locked', (ld) ->
+            assert ld?
+            console.log ld.expires.getTime(), lock2.lockExpireTime.getTime()
+            assert ld.expires.getTime() is lock2.lockExpireTime.getTime()
+            lock2.releaseLock().on 'released', (ld) ->
+              assert ld?
+              done()
+
   describe 'testing under load', () ->
 
     this.timeout 30000
