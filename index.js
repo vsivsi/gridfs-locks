@@ -4,7 +4,9 @@
      See included LICENSE file for details.
 ************************************************************************/
 
-eventEmitter = require('events').EventEmitter;
+var eventEmitter = require('events').EventEmitter;
+
+var never = 8000000000000000;  // never + now = 20000 years shy of max Date(), about 250,000 years from now
 
 //
 // Parameters:
@@ -100,9 +102,9 @@ var Lock = exports.Lock = function(fileId, lockCollection, options) {
   self.fileId = fileId;
   self.timeCreated = new Date();
   self.pollingInterval = 1000*(options.pollingInterval || self.lockCollection.pollingInterval);
-  self.lockExpiration = 1000*(options.lockExpiration || self.lockCollection.lockExpiration || 8000000000000); // Never
-  self.lockExpireTime = new Date(self.timeCreated.getTime() + self.lockExpiration);  // Fails in 20000 years?!
-  self.timeOut = 1000*(options.timeOut || self.lockCollection.timeOut || 0); // Default to no timeout
+  self.lockExpiration = 1000*(options.lockExpiration || self.lockCollection.lockExpiration);
+  self.lockExpireTime = new Date(self.timeCreated.getTime() + (self.lockExpiration || never));
+  self.timeOut = 1000*(options.timeOut || self.lockCollection.timeOut);
   self.metaData = options.metaData || self.lockCollection.metaData;
   self.lockType = null;
   self.query = null;
@@ -174,6 +176,9 @@ Lock.prototype.renewLock = function() {
   var self = this;
   if (!(self.heldLock)) {
     return emitError(self, "Lock.renewLock cannot renew an unheld lock.");
+  }
+  if (!(self.lockExpiration)) {
+    return emitError(self, "Lock.renewLock cannot renew a non-expiring lock.");
   }
   self.lockExpireTime = new Date(new Date().getTime() + self.lockExpiration);
   self.query = null;
@@ -278,7 +283,7 @@ var emitError = function (self, err) {
 // Private function that ensures an initialized lock doc is in the database
 
 var initializeLockDoc = function (self, callback) {
-  self.lockExpireTime = new Date(new Date().getTime() + self.lockExpiration);
+  self.lockExpireTime = new Date(new Date().getTime() + (self.lockExpiration || never));
   self.collection.findAndModify({files_id: self.fileId},
     [],
     {$setOnInsert: {files_id: self.fileId, expires: self.lockExpireTime, read_locks: 0, write_lock: false, write_req: false, reads: 0, writes: 0, meta: null}},
@@ -290,7 +295,7 @@ var initializeLockDoc = function (self, callback) {
 
 var timeoutQuery = function (self, options) {
   options = options || {};
-  self.update.$set.expires = self.lockExpireTime = new Date(new Date().getTime() + self.lockExpiration);
+  self.update.$set.expires = self.lockExpireTime = new Date(new Date().getTime() + (self.lockExpiration || never));
   // Read locks can break writelocks with write_req after more than one polling cycle
   if (self.lockType === 'r') {
     self.query.$or[0].expires.$lt = new Date(new Date() - 2*self.pollingInterval)
