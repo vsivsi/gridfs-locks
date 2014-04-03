@@ -139,12 +139,12 @@ describe 'gridfs-locks', () ->
         lock1 = Lock id, lockColl, {}
         lock2 = Lock id, lockColl, {}
 
-      it "should require a callback function", () ->
-        assert.throws (() -> lock1.obtainReadLock()), /A callback function must be provided/
+      afterEach () ->
+        lock1.removeAllListeners()
+        lock2.removeAllListeners()
 
       it "should return a valid lock document", (done) ->
-        lock1.obtainReadLock (e, ld) ->
-          assert.ifError e
+        lock1.obtainReadLock().on 'locked', (ld) ->
           assert ld?
           assert id.equals ld.files_id
           assert ld.expires instanceof Date
@@ -164,14 +164,12 @@ describe 'gridfs-locks', () ->
         assert lock1.update?
 
       it "should fail to return a second lock document for a lock object that already holds a lock", (done) ->
-        lock1.obtainReadLock (e, ld) ->
-          assert not ld?
-          assert.throws (() -> throw e), /Cannot obtain an already held lock/
+        lock1.obtainReadLock().on 'error', (e) ->
+          assert.throws (() -> throw e), /cannot obtain an already held lock/
           done()
 
       it "should return a valid second read lock on a different lock object", (done) ->
-        lock2.obtainReadLock (e, ld) ->
-          assert.ifError e
+        lock2.obtainReadLock().on 'locked', (ld) ->
           assert ld?
           assert id.equals ld.files_id
           assert ld.expires instanceof Date
@@ -208,9 +206,7 @@ describe 'gridfs-locks', () ->
 
       describe 'obtainWriteLock', () ->
         it "should fail to return a valid write lock", (done) ->
-          lock2.obtainWriteLock (e, ld) ->
-            assert.ifError e
-            assert.equal ld, null
+          lock2.obtainWriteLock().on 'timed-out', () ->
             done()
 
     describe 'obtainWriteLock', () ->
@@ -224,12 +220,12 @@ describe 'gridfs-locks', () ->
         lock1 = Lock id, lockColl, {}
         lock2 = Lock id, lockColl, {}
 
-      it "should require a callback function", () ->
-        assert.throws (() -> lock1.obtainWriteLock()), /A callback function must be provided/
+      afterEach () ->
+        lock1.removeAllListeners()
+        lock2.removeAllListeners()
 
       it "should return a valid lock document", (done) ->
-        lock1.obtainWriteLock (e, ld) ->
-          assert.ifError e
+        lock1.obtainWriteLock().on 'locked', (ld) ->
           assert ld?
           assert id.equals ld.files_id
           assert ld.expires instanceof Date
@@ -249,21 +245,16 @@ describe 'gridfs-locks', () ->
         assert lock1.update?
 
       it "should fail to return a second lock document for a lock object that already holds a lock", (done) ->
-        lock1.obtainWriteLock (e, ld) ->
-          assert not ld?
-          assert.throws (() -> throw e), /Cannot obtain an already held lock/
+        lock1.obtainWriteLock().on 'error', (e) ->
+          assert.throws (() -> throw e), /cannot obtain an already held lock/
           done()
 
       it "should fail to return a valid second write lock", (done) ->
-        lock2.obtainWriteLock (e, ld) ->
-          assert.ifError e
-          assert.equal ld, null
+        lock2.obtainWriteLock().on 'timed-out', () ->
           done()
 
       it "obtainReadLock should fail to return a valid read lock", (done) ->
-        lock2.obtainReadLock (e, ld) ->
-          assert.ifError e
-          assert.equal ld, null
+        lock2.obtainReadLock().on 'timed-out', () ->
           done()
 
       describe 'releaseLock', () ->
@@ -298,8 +289,7 @@ describe 'gridfs-locks', () ->
         id2 = new mongo.BSONPure.ObjectID
         lock1 = Lock id, lockColl, {}
         lock2 = Lock id, lockColl, {}
-        lock2.obtainReadLock (e, ld) ->
-          assert.ifError e
+        lock2.obtainReadLock().on 'locked', (ld) ->
           assert ld?
           done()
 
@@ -332,8 +322,7 @@ describe 'gridfs-locks', () ->
       before (done) ->
         id = new mongo.BSONPure.ObjectID
         lock1 = Lock id, lockColl, { lockExpiration: 60 }
-        lock1.obtainReadLock (e, ld) ->
-          assert.ifError e
+        lock1.obtainReadLock().on 'locked', (ld) ->
           assert ld?
           done()
 
@@ -379,12 +368,10 @@ describe 'gridfs-locks', () ->
     it "should work for a write request waiting on a read lock", (done) ->
       expectedOrder = "1122"
       order = ''
-      lock1.obtainReadLock (e, ld) ->
-        assert.ifError e
+      lock1.obtainReadLock().on 'locked', (ld) ->
         assert ld?
         order += '1'
-        lock2.obtainWriteLock (e, ld) ->
-          assert.ifError e
+        lock2.obtainWriteLock().on 'locked', (ld) ->
           assert ld?
           order += '2'
           lock2.releaseLock().on 'released', (ld) ->
@@ -399,16 +386,13 @@ describe 'gridfs-locks', () ->
     it "should work for a write request waiting on multiple read locks", (done) ->
       expectedOrder = "122133"
       order = ''
-      lock1.obtainReadLock (e, ld) ->
-        assert.ifError e
+      lock1.obtainReadLock().on 'locked', (ld) ->
         assert ld?
         order += '1'
-        lock2.obtainReadLock (e, ld) ->
-          assert.ifError e
+        lock2.obtainReadLock().on 'locked', (ld) ->
           assert ld?
           order += '2'
-          lock3.obtainWriteLock (e, ld) ->
-            assert.ifError e
+          lock3.obtainWriteLock().on 'locked', (ld) ->
             assert ld?
             order += '3'
             lock3.releaseLock().on 'released', (ld) ->
@@ -426,12 +410,10 @@ describe 'gridfs-locks', () ->
     it "should work for a read request waiting on a write lock", (done) ->
       expectedOrder = "1122"
       order = ''
-      lock1.obtainWriteLock (e, ld) ->
-        assert.ifError e
+      lock1.obtainWriteLock().on 'locked', (ld) ->
         assert ld?
         order += '1'
-        lock2.obtainReadLock (e, ld) ->
-          assert.ifError e
+        lock2.obtainReadLock().on 'locked', (ld) ->
           assert ld?
           order += '2'
           lock2.releaseLock().on 'released', (ld) ->
@@ -446,20 +428,17 @@ describe 'gridfs-locks', () ->
     it "should give priority to a write request waiting on a read lock over a subsequent read request", (done) ->
       expectedOrder = "112233"
       order = ''
-      lock1.obtainReadLock (e, ld) ->
-        assert.ifError e
+      lock1.obtainReadLock().on 'locked', (ld) ->
         assert ld?
         order += '1'
-        lock2.obtainWriteLock ((e, ld) ->
-            assert.ifError e
+        lock2.obtainWriteLock().on('locked', (ld) ->
             assert ld?
             order += '2'
             lock2.releaseLock().on 'released', (ld) ->
               assert ld?
-              order += '2'),
-          { testingCallback: (() -> # This testing callback happens once the lock2 write request is written
-            lock3.obtainReadLock (e, ld) ->
-              assert.ifError e
+              order += '2'
+        ).once('write-req-set', () ->
+            lock3.obtainReadLock().on 'locked', (ld) ->
               assert ld?
               order += '3'
               lock3.releaseLock().on 'released', (ld) ->
@@ -469,25 +448,22 @@ describe 'gridfs-locks', () ->
                 done()
             lock1.releaseLock().on 'released', (ld) ->
               assert ld?
-              order += '1')}
+              order += '1');
 
     it "should give priority to a write request waiting on a write lock over a subsequent read request", (done) ->
       expectedOrder = "112233"
       order = ''
-      lock1.obtainWriteLock (e, ld) ->
-        assert.ifError e
+      lock1.obtainWriteLock().on 'locked', (ld) ->
         assert ld?
         order += '1'
-        lock2.obtainWriteLock ((e, ld) ->
-            assert.ifError e
+        lock2.obtainWriteLock().on('locked', (ld) ->
             assert ld?
             order += '2'
             lock2.releaseLock().on 'released', (ld) ->
               assert ld?
-              order += '2'),
-          { testingCallback: (() -> # This testing callback happens once the lock2 write request is written
-            lock3.obtainReadLock (e, ld) ->
-              assert.ifError e
+              order += '2'
+        ).once('write-req-set', () ->
+            lock3.obtainReadLock().on 'locked', (ld) ->
               assert ld?
               order += '3'
               lock3.releaseLock().on 'released', (ld) ->
@@ -497,23 +473,20 @@ describe 'gridfs-locks', () ->
                 done()
             lock1.releaseLock().on 'released', (ld) ->
               assert ld?
-              order += '1')}
+              order += '1');
 
     it "should allow a read request to proceed when a prior write request times out", (done) ->
       expectedOrder = "1331"
       order = ''
       lock2.timeOut = 150
-      lock1.obtainReadLock (e, ld) ->
-        assert.ifError e
+      lock1.obtainReadLock().on 'locked', (ld) ->
         assert ld?
         order += '1'
-        lock2.obtainWriteLock ((e, ld) ->
+        lock2.obtainWriteLock().on('locked', (ld) ->
             # This write lock request should time out
-            assert.ifError e
-            assert not ld?),
-          { testingCallback: (() -> # This testing callback happens once the lock2 write request is written
-            lock3.obtainReadLock (e, ld) ->
-              assert.ifError e
+            assert false
+        ).once('write-req-set', () ->
+            lock3.obtainReadLock().on 'locked', (ld) ->
               assert ld?
               order += '3'
               lock3.releaseLock().on 'released', (ld) ->
@@ -523,7 +496,7 @@ describe 'gridfs-locks', () ->
                   assert ld?
                   order += '1'
                   assert.equal order, expectedOrder
-                  done())}
+                  done());
 
   describe 'lock expiration', () ->
 
@@ -555,12 +528,10 @@ describe 'gridfs-locks', () ->
     it "should work for a write request waiting on a dead read lock", (done) ->
       expectedOrder = "122"
       order = ''
-      lock1.obtainReadLock (e, ld) ->
-        assert.ifError e
+      lock1.obtainReadLock().on 'locked', (ld) ->
         assert ld?
         order += '1'
-        lock2.obtainWriteLock (e, ld) ->
-          assert.ifError e
+        lock2.obtainWriteLock().on 'locked', (ld) ->
           assert ld?
           order += '2'
           lock2.releaseLock().on 'released', (ld) ->
@@ -572,16 +543,13 @@ describe 'gridfs-locks', () ->
     it "should work for a write request waiting on multiple dead read locks", (done) ->
       expectedOrder = "1233"
       order = ''
-      lock1.obtainReadLock (e, ld) ->
-        assert.ifError e
+      lock1.obtainReadLock().on 'locked', (ld) ->
         assert ld?
         order += '1'
-        lock2.obtainReadLock (e, ld) ->
-          assert.ifError e
+        lock2.obtainReadLock().on 'locked', (ld) ->
           assert ld?
           order += '2'
-          lock3.obtainWriteLock (e, ld) ->
-            assert.ifError e
+          lock3.obtainWriteLock().on 'locked', (ld) ->
             assert ld?
             order += '3'
             lock3.releaseLock().on 'released', (ld) ->
@@ -593,12 +561,10 @@ describe 'gridfs-locks', () ->
     it "should work for a read request waiting on a dead write lock", (done) ->
       expectedOrder = "122"
       order = ''
-      lock1.obtainWriteLock (e, ld) ->
-        assert.ifError e
+      lock1.obtainWriteLock().on 'locked', (ld) ->
         assert ld?
         order += '1'
-        lock2.obtainReadLock (e, ld) ->
-          assert.ifError e
+        lock2.obtainReadLock().on 'locked', (ld) ->
           assert ld?
           order += '2'
           lock2.releaseLock().on 'released', (ld) ->
@@ -610,68 +576,59 @@ describe 'gridfs-locks', () ->
     it "should give priority to a write request waiting on a dead read lock over a subsequent read request", (done) ->
       expectedOrder = "12233"
       order = ''
-      lock1.obtainReadLock (e, ld) ->
-        assert.ifError e
+      lock1.obtainReadLock().on 'locked', (ld) ->
         assert ld?
         order += '1'
-        lock2.obtainWriteLock ((e, ld) ->
-            assert.ifError e
+        lock2.obtainWriteLock().on('locked', (ld) ->
             assert ld?
             order += '2'
             lock2.releaseLock().on 'released', (ld) ->
               assert ld?
-              order += '2'),
-          { testingCallback: (() -> # This testing callback happens once the lock2 write request is written
-            lock3.obtainReadLock (e, ld) ->
-              assert.ifError e
+              order += '2'
+        ).once('write-req-set', () ->
+            lock3.obtainReadLock().on 'locked', (ld) ->
               assert ld?
               order += '3'
               lock3.releaseLock().on 'released', (ld) ->
                 assert ld?
                 order += '3'
                 assert.equal order, expectedOrder
-                done())}
+                done());
 
     it "should give priority to a write request waiting on a dead write lock over a subsequent read request", (done) ->
       expectedOrder = "12233"
       order = ''
-      lock1.obtainWriteLock (e, ld) ->
-        assert.ifError e
+      lock1.obtainWriteLock().on 'locked', (ld) ->
         assert ld?
         order += '1'
-        lock2.obtainWriteLock ((e, ld) ->
-            assert.ifError e
+        lock2.obtainWriteLock().on('locked', (ld) ->
             assert ld?
             order += '2'
             lock2.releaseLock().on 'released', (ld) ->
               assert ld?
-              order += '2'),
-          { testingCallback: (() -> # This testing callback happens once the lock2 write request is written
-            lock3.obtainReadLock (e, ld) ->
-              assert.ifError e
+              order += '2'
+        ).once('write-req-set', () ->
+            lock3.obtainReadLock().on 'locked', (ld) ->
               assert ld?
               order += '3'
               lock3.releaseLock().on 'released', (ld) ->
                 assert ld?
                 order += '3'
                 assert.equal order, expectedOrder
-                done())}
+                done());
 
     it "should allow a read request to proceed when a prior write request dies without releasing write_req", (done) ->
       expectedOrder = "1331"
       order = ''
       lock2.timeOut = 150
-      lock1.obtainReadLock (e, ld) ->
-        assert.ifError e
+      lock1.obtainReadLock().on 'locked', (ld) ->
         assert ld?
         order += '1'
-        lock2.obtainWriteLock ((e, ld) ->
+        lock2.obtainWriteLock().on('locked', (ld) ->
             # This write lock request should time out
-            assert.ifError e
-            assert not ld?),
-          { testWriteReq: true, testingCallback: (() -> # This testing callback happens once the lock2 write request is written
-            lock3.obtainReadLock (e, ld) ->
-              assert.ifError e
+            assert false
+        ).once('write-req-set', () ->
+            lock3.obtainReadLock().on 'locked', (ld) ->
               assert ld?
               order += '3'
               lock3.releaseLock().on 'released', (ld) ->
@@ -681,34 +638,31 @@ describe 'gridfs-locks', () ->
                   assert ld?
                   order += '1'
                   assert.equal order, expectedOrder
-                  done())}
+                  done());
 
     it "should allow a read request to proceed when a prior write request dies waiting for a dead write lock without releasing write_req", (done) ->
       expectedOrder = "133"
       order = ''
       lock2.timeOut = 150
-      lock1.obtainWriteLock (e, ld) ->
-        assert.ifError e
+      lock1.obtainWriteLock().on 'locked', (ld) ->
         assert ld?
         order += '1'
-        lock2.obtainWriteLock ((e, ld) ->
+        lock2.obtainWriteLock().on('locked', (ld) ->
             # This write lock request should time out
-            assert.ifError e
-            assert not ld?),
-          { testWriteReq: true, testingCallback: (() -> # This testing callback happens once the lock2 write request is written
-            lock3.obtainReadLock (e, ld) ->
-              assert.ifError e
+            assert false
+        ).once('write-req-set', () ->
+            lock3.obtainReadLock().on 'locked', (ld) ->
               assert ld?
               order += '3'
               lock3.releaseLock().on 'released', (ld) ->
                 assert ld?
                 order += '3'
                 assert.equal order, expectedOrder
-                done())}
+                done());
 
   describe 'testing under load', () ->
 
-    this.timeout 120000
+    this.timeout 30000
 
     lockColl = null
     locksArray = []
@@ -730,8 +684,7 @@ describe 'gridfs-locks', () ->
       released = 0
       for l in locksArray
         myTimeout 10000, l, (l) ->
-          l.obtainReadLock (e, ld) ->
-            assert.ifError e
+          l.obtainReadLock().on 'locked', (ld) ->
             assert ld?
             myTimeout 5, l, (l) ->
               l.releaseLock().on 'released', (ld) ->
@@ -744,8 +697,7 @@ describe 'gridfs-locks', () ->
       currentValue = 0
       for l, x in locksArray when x < numLocks*writeLockFraction
         myTimeout 10000, l, (l) ->
-          l.obtainWriteLock (e, ld) ->
-            assert.ifError e
+          l.obtainWriteLock().on 'locked', (ld) ->
             assert ld?
             assert.equal Math.floor(currentValue), currentValue
             currentValue += 0.5
@@ -762,8 +714,7 @@ describe 'gridfs-locks', () ->
       for l, x in locksArray
         myTimeout 10000, l, (l) ->
           if Math.random() <= writeLockFraction
-            l.obtainWriteLock (e, ld) ->
-              assert.ifError e
+            l.obtainWriteLock().on 'locked', (ld) ->
               assert ld?
               assert.equal Math.floor(currentValue), currentValue
               currentValue += 0.5
@@ -774,8 +725,7 @@ describe 'gridfs-locks', () ->
                   released++
                   done() if released is numLocks
           else
-            l.obtainReadLock (e, ld) ->
-              assert.ifError e
+            l.obtainReadLock().on 'locked', (ld) ->
               assert ld?
               assert.equal Math.floor(currentValue), currentValue
               myTimeout 5, l, (l) ->
