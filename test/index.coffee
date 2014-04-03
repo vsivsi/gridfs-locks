@@ -342,6 +342,14 @@ describe 'gridfs-locks', () ->
             assert.throws (() -> throw e), /cannot renew an unheld lock/
             done()
 
+      it "should fail to renew a non-expiring lock", (done) ->
+        l = Lock id, lockColl
+        l.obtainReadLock().on 'locked', (ld) ->
+          assert ld?
+          l.renewLock().on 'error', (e) ->
+            assert.throws (() -> throw e), /cannot renew a non-expiring lock/
+            done()
+
   describe 'waiting for locks', () ->
 
     this.timeout 5000
