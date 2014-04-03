@@ -172,27 +172,30 @@ Lock.prototype.releaseLock = function () {
 //    'error':
 //         err: Any error that occurs
 //
-Lock.prototype.renewLock = function() {
+Lock.prototype.renewLock = function(event) {
   var self = this;
   if (!(self.heldLock)) {
     return emitError(self, "Lock.renewLock cannot renew an unheld lock.");
   }
-  if (!(self.lockExpiration)) {
-    return emitError(self, "Lock.renewLock cannot renew a non-expiring lock.");
-  }
-  self.lockExpireTime = new Date(new Date().getTime() + self.lockExpiration);
-  self.query = null;
-  self.collection.findAndModify({files_id: self.fileId},
+  event = event || 'renewed';
+  self.lockExpireTime = new Date(new Date().getTime() + (self.lockExpiration || never));
+  self.collection.findAndModify({files_id: self.fileId, expires: {$lt: self.lockExpireTime}},
     [],
     {$set: {expires: self.lockExpireTime}},
     {w: self.lockCollection.writeConcern, new: true},
     function (err, doc) {
       if (err) { return emitError(self, err); }
-      self.heldLock = doc;
       if (doc == null) {
-        return emitError(self, "Lock.renewLock document not found in collection");
+        self.collection.findOne({files_id: self.fileId}, function (err, doc) {
+          if (err) { return emitError(self, err); }
+          if (doc == null) { return emitError(self, "Lock.renewLock document not found in collection"); }
+          self.heldLock = doc;
+          self.emit(event, doc);
+        });
+      } else {
+        self.heldLock = doc;
+        self.emit(event, doc);
       }
-      self.emit('renewed', doc);
     });
   return self;
 };
@@ -216,16 +219,20 @@ Lock.prototype.renewLock = function() {
 //
 Lock.prototype.obtainReadLock = function() {
   var self = this;
+  self.timeCreated = new Date();
   if (self.heldLock) {
     return emitError(self, "Lock.obtainReadLock cannot obtain an already held lock.");
   }
   // Ensure that lock document for files_id exists
+  self.timeCreated = new Date();
   initializeLockDoc(self, function (err, doc) {
     if (err) { return emitError(self, err); }
-    self.query = {files_id: self.fileId, $or: [{expires: {$lt: new Date(new Date() - 2000*self.lockCollection.pollingInterval)}}, {write_lock: false, write_req: false}]};
-    self.update = {$inc: {read_locks: 1, reads: 1}, $set: {write_lock: false, write_req: false, expires: self.lockExpireTime, meta: self.metaData}};
+    self.query = {files_id: self.fileId,
+                  $or: [{expires: {$lt: new Date(new Date() - 2000*self.lockCollection.pollingInterval)}},
+                        {write_lock: false, write_req: false}]};
+    self.update = {$inc: {read_locks: 1, reads: 1}, $set: {write_lock: false, write_req: false, meta: self.metaData}};
     self.lockType = 'r';
-    timeoutQuery(self);
+    timeoutReadLockQuery(self);
   });
   return self;
 };
@@ -262,12 +269,15 @@ Lock.prototype.obtainWriteLock = function(testingOptions) {
   }
   testingOptions = testingOptions || {};
   // Ensure that lock document for files_id exists
+  self.timeCreated = new Date();
   initializeLockDoc(self, function (err, doc) {
     if (err) { return emitError(self, err); }
-    self.query = {files_id: self.fileId, $or: [{expires: {$lt: new Date()}, write_req: true}, {write_lock: false, read_locks: 0}]};
-    self.update = {$set: {write_lock: true, write_req: false, read_locks: 0, expires: self.lockExpireTime, meta: self.metaData}, $inc:{writes: 1}};
+    self.query = {files_id: self.fileId,
+                  $or: [{expires: {$lt: new Date()}, write_req: true},
+                        {write_lock: false, read_locks: 0}]};
+    self.update = {$set: {write_lock: true, write_req: false, read_locks: 0, meta: self.metaData}, $inc:{writes: 1}};
     self.lockType = 'w';
-    timeoutQuery(self, testingOptions);
+    timeoutWriteLockQuery(self, testingOptions);
   });
   return self;
 };
@@ -283,40 +293,76 @@ var emitError = function (self, err) {
 // Private function that ensures an initialized lock doc is in the database
 
 var initializeLockDoc = function (self, callback) {
-  self.lockExpireTime = new Date(new Date().getTime() + (self.lockExpiration || never));
   self.collection.findAndModify({files_id: self.fileId},
     [],
-    {$setOnInsert: {files_id: self.fileId, expires: self.lockExpireTime, read_locks: 0, write_lock: false, write_req: false, reads: 0, writes: 0, meta: null}},
+    {$setOnInsert: {files_id: self.fileId,
+                    expires: self.timeCreated,
+                    read_locks: 0,
+                    write_lock: false,
+                    write_req: false,
+                    reads: 0,
+                    writes: 0,
+                    meta: null}},
     {w: self.lockCollection.writeConcern, upsert: true, new: true},
     callback);
 };
 
 // Private function that implements polling for locks in the database
 
-var timeoutQuery = function (self, options) {
+var timeoutReadLockQuery = function (self, options) {
+  options = options || {};
+  self.lockExpireTime = new Date(new Date().getTime() + (self.lockExpiration || never));
+  // Read locks can break writelocks with write_req after more than one polling cycle
+  self.query.$or[0].expires.$lt = new Date(new Date() - 2*self.pollingInterval);
+  self.collection.findAndModify(self.query,
+    [],
+    self.update,
+    {w: self.lockCollection.writeConcern, new: true},
+    function (err, doc) {
+      if (err) { return emitError(self, err); }
+      if (!doc) {
+        if(new Date() - self.timeCreated >= self.timeOut) {
+          return self.emit('timed-out');
+        }
+        return setTimeout(timeoutReadLockQuery, self.pollingInterval, self, options);
+      } else {
+        self.heldLock = doc;
+        if (doc.expires < self.lockExpireTime) {
+          return self.renewLock('locked');
+        } else {
+          return self.emit('locked', doc);
+        }
+      }
+    }
+  );
+};
+
+// Private function that implements polling for locks in the database
+
+var timeoutWriteLockQuery = function (self, options) {
   options = options || {};
   self.update.$set.expires = self.lockExpireTime = new Date(new Date().getTime() + (self.lockExpiration || never));
-  // Read locks can break writelocks with write_req after more than one polling cycle
-  if (self.lockType === 'r') {
-    self.query.$or[0].expires.$lt = new Date(new Date() - 2*self.pollingInterval)
-  } else {
-    self.query.$or[0].expires.$lt = new Date();
-  }
-  self.collection.findAndModify(self.query, [], self.update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
-    if (err) { return emitError(self, err); }
-    if (doc) {
-      self.heldLock = doc;
-      return self.emit('locked', doc);
-    }
-
-    if (self.lockType === 'w') {
-      if(new Date() - self.timeCreated > self.timeOut) {
-        if (!options.testWriteReq) {
-          // Clear the write_req flag, since this obtainWriteLock has timed out
-          self.collection.findAndModify({files_id: self.fileId, write_req: true}, [], {$set: {write_req: false }}, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
+  self.query.$or[0].expires.$lt = new Date();
+  self.collection.findAndModify(self.query,
+    [],
+    self.update,
+    {w: self.lockCollection.writeConcern, new: true},
+    function (err, doc) {
+      if (err) { return emitError(self, err); }
+      if (doc) {
+        self.heldLock = doc;
+        return self.emit('locked', doc);
+      }
+      if (new Date() - self.timeCreated >= self.timeOut) {
+        // Clear the write_req flag, since this obtainWriteLock has timed out
+        self.collection.findAndModify({files_id: self.fileId, write_req: true},
+          [],
+          {$set: {write_req: false}},
+          {w: self.lockCollection.writeConcern, new: true},
+          function (err, doc) {
             if (err) { return emitError(self, err); }
-          });
-        }
+          }
+        );
         return self.emit('timed-out');
       } else {
         // write_req gets set every time because claimed write locks and timed out write requests clear it
@@ -328,15 +374,8 @@ var timeoutQuery = function (self, options) {
             if (err) { return emitError(self, err); }
             self.emit('write-req-set');
         });
-      }
-    } else {
-      if(new Date() - self.timeCreated > self.timeOut) {
-        return self.emit('timed-out');
+        return setTimeout(timeoutWriteLockQuery, self.pollingInterval, self, options);
       }
     }
-
-    setTimeout(timeoutQuery, self.pollingInterval, self);
-
-  });
+  );
 };
-

@@ -167,6 +167,8 @@ describe 'gridfs-locks', () ->
         lock1.obtainReadLock().on 'error', (e) ->
           assert.throws (() -> throw e), /cannot obtain an already held lock/
           done()
+        lock1.on 'locked', () ->
+          assert false
 
       it "should return a valid second read lock on a different lock object", (done) ->
         lock2.obtainReadLock().on 'locked', (ld) ->
@@ -208,6 +210,8 @@ describe 'gridfs-locks', () ->
         it "should fail to return a valid write lock", (done) ->
           lock2.obtainWriteLock().on 'timed-out', () ->
             done()
+          lock2.on 'locked', () ->
+            assert false
 
     describe 'obtainWriteLock', () ->
 
@@ -248,14 +252,20 @@ describe 'gridfs-locks', () ->
         lock1.obtainWriteLock().on 'error', (e) ->
           assert.throws (() -> throw e), /cannot obtain an already held lock/
           done()
+        lock1.on 'locked', () ->
+          assert false
 
       it "should fail to return a valid second write lock", (done) ->
         lock2.obtainWriteLock().on 'timed-out', () ->
           done()
+        lock2.on 'locked', () ->
+          assert false
 
       it "obtainReadLock should fail to return a valid read lock", (done) ->
         lock2.obtainReadLock().on 'timed-out', () ->
           done()
+        lock2.on 'locked', () ->
+          assert false
 
       describe 'releaseLock', () ->
         it "should return a valid lock document", (done) ->
@@ -301,6 +311,8 @@ describe 'gridfs-locks', () ->
         lock1.releaseLock().on 'error', (e) ->
           assert.throws (() -> throw e), /cannot release an unheld lock/
           done()
+        lock1.on 'released', () ->
+          assert false
 
       it "should fail on unsupported lockType", (done) ->
         lock2.lockType = "X"
@@ -308,12 +320,16 @@ describe 'gridfs-locks', () ->
           assert.throws (() -> throw e), /invalid lockType/
           lock2.lockType = "r"
           done()
+        lock2.on 'released', () ->
+          assert false
 
       it "should fail on missing lock document", (done) ->
         lock2.fileId = id2
         lock2.releaseLock().on 'error', (e) ->
           assert.throws (() -> throw e), /document not found in collection/
           done()
+        lock2.on 'released', () ->
+          assert false
 
     describe 'renewLock', () ->
       lock1 = null
@@ -331,8 +347,8 @@ describe 'gridfs-locks', () ->
 
       it "should successfully extend the lock time", (done) ->
         expiresBefore = lock1.heldLock.expires
-        lock1.renewLock() .on 'renewed', (ld) ->
-          assert expiresBefore < ld.expires
+        lock1.renewLock().on 'renewed', (ld) ->
+          assert expiresBefore <= ld.expires
           assert.equal ld.expires, lock1.heldLock.expires
           done()
 
@@ -341,14 +357,8 @@ describe 'gridfs-locks', () ->
           lock1.renewLock().on 'error', (e) ->
             assert.throws (() -> throw e), /cannot renew an unheld lock/
             done()
-
-      it "should fail to renew a non-expiring lock", (done) ->
-        l = Lock id, lockColl
-        l.obtainReadLock().on 'locked', (ld) ->
-          assert ld?
-          l.renewLock().on 'error', (e) ->
-            assert.throws (() -> throw e), /cannot renew a non-expiring lock/
-            done()
+        lock1.on 'renewed', () ->
+          assert false
 
   describe 'waiting for locks', () ->
 
