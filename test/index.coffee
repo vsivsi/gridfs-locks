@@ -32,17 +32,17 @@ describe 'gridfs-locks', () ->
 
     it "should require a valid mongo db connection object", (done) ->
       LockCollection(null).on 'error', (e) ->
-        assert e.toString() is "Error: LockCollection 'db' parameter must be a valid Mongodb connection object."
+        assert.throws (() -> throw e), /parameter must be a valid Mongodb connection object/
         done()
 
     it "should require options to be an object", (done) ->
       LockCollection(db, 1).on 'error', (e) ->
-        assert e.toString() is "Error: LockCollection 'options' parameter must be an object."
+        assert.throws (() -> throw e), /parameter must be an object/
         done()
 
     it "should require a non-falsy root to be a string", (done) ->
       LockCollection(db, {root: 1}).on 'error', (e) ->
-        assert e.toString() is "Error: LockCollection 'options.root' must be a string or falsy."
+        assert.throws (() -> throw e), /must be a string or falsy/
         done()
 
     it "should create a valid mongodb collection", () ->
@@ -90,6 +90,21 @@ describe 'gridfs-locks', () ->
 
     it "should create instances without the new keyword", () ->
       assert lock instanceof Lock
+
+    it "should require options to be an object", (done) ->
+      Lock(1, lockColl, 1).on 'error', (e) ->
+        assert.throws (() -> throw e), /parameter must be an object/
+        done()
+
+    it "should require lockCollection to be a valid lockCollection object", (done) ->
+      Lock(1, 1).on 'error', (e) ->
+        assert.throws (() -> throw e), /invalid 'lockCollection' object/
+        done()
+
+    it "should require lockCollection to be ready", (done) ->
+      Lock(1, LockCollection db).on 'error', (e) ->
+        assert.throws (() -> throw e), /'lockCollection' must be 'ready'/
+        done()
 
     it "should have 13 keys", () ->
       assert.equal Object.keys(lock).length, 13
@@ -172,8 +187,7 @@ describe 'gridfs-locks', () ->
 
       describe 'releaseLock', () ->
         it "should return a valid lock document", (done) ->
-          lock2.releaseLock (e, ld) ->
-            assert.ifError e
+          lock2.releaseLock().on 'released', (ld) ->
             assert ld?
             assert id.equals ld.files_id
             assert ld.expires instanceof Date
@@ -254,8 +268,7 @@ describe 'gridfs-locks', () ->
 
       describe 'releaseLock', () ->
         it "should return a valid lock document", (done) ->
-          lock1.releaseLock (e, ld) ->
-            assert.ifError e
+          lock1.releaseLock().on 'released', (ld) ->
             assert ld?
             assert id.equals ld.files_id
             assert ld.expires instanceof Date
@@ -290,43 +303,26 @@ describe 'gridfs-locks', () ->
           assert ld?
           done()
 
-      it "should fail if callback is not a function", () ->
-        assert.throws (() -> lock1.releaseLock("callback")), /Callback must be a function/
+      afterEach () ->
+        lock1.removeAllListeners()
+        lock2.removeAllListeners()
 
-      it "should fail to release an unheld lock (with callback)", (done) ->
-        lock1.releaseLock (e, ld) ->
-          assert not ld?
-          assert.throws (() -> throw e), /Cannot release an unheld lock/
+      it "should fail to release an unheld lock", (done) ->
+        lock1.releaseLock().on 'error', (e) ->
+          assert.throws (() -> throw e), /cannot release an unheld lock/
           done()
 
-      it "should fail to release an unheld lock (without callback)", () ->
-        assert.throws (() -> lock1.releaseLock()), /Cannot release an unheld lock/
-
-      it "should tolerate an omitted callback function for successful release", (done) ->
-        lock1.obtainReadLock (e, ld) ->
-          assert.ifError e
-          assert ld?
-          lock1.releaseLock()
-          done()
-
-      it "should fail on unsupported lockType (without callback)", () ->
+      it "should fail on unsupported lockType", (done) ->
         lock2.lockType = "X"
-        assert.throws (() -> lock2.releaseLock()), /Invalid lockType/
-        lock2.lockType = "r"
-
-      it "should fail on unsupported lockType (with callback)", (done) ->
-        lock2.lockType = "X"
-        lock2.releaseLock (e, ld) ->
-          assert not ld?
-          assert.throws (() -> throw e), /Invalid lockType/
+        lock2.releaseLock().on 'error', (e) ->
+          assert.throws (() -> throw e), /invalid lockType/
           lock2.lockType = "r"
           done()
 
       it "should fail on missing lock document", (done) ->
         lock2.fileId = id2
-        lock2.releaseLock (e, ld) ->
-          assert not ld?
-          assert.throws (() -> throw e), /Lock document not found in collection/
+        lock2.releaseLock().on 'error', (e) ->
+          assert.throws (() -> throw e), /document not found in collection/
           done()
 
     describe 'renewLock', () ->
@@ -352,7 +348,7 @@ describe 'gridfs-locks', () ->
           done()
 
       it "should fail to renew an unheld lock", (done) ->
-        lock1.releaseLock (e, ld) ->
+        lock1.releaseLock().on 'released', (e, ld) ->
           lock1.renewLock (e, ld) ->
             assert.throws (() -> throw e), /Cannot renew an unheld lock/
             done()
@@ -391,14 +387,12 @@ describe 'gridfs-locks', () ->
           assert.ifError e
           assert ld?
           order += '2'
-          lock2.releaseLock (e, ld) ->
-            assert.ifError e
+          lock2.releaseLock().on 'released', (ld) ->
             assert ld?
             order += '2'
             assert.equal order, expectedOrder
             done()
-        lock1.releaseLock (e, ld) ->
-          assert.ifError e
+        lock1.releaseLock().on 'released', (ld) ->
           assert ld?
           order += '1'
 
@@ -417,18 +411,15 @@ describe 'gridfs-locks', () ->
             assert.ifError e
             assert ld?
             order += '3'
-            lock3.releaseLock (e, ld) ->
-              assert.ifError e
+            lock3.releaseLock().on 'released', (ld) ->
               assert ld?
               order += '3'
               assert order is expectedOrder
               done()
-          lock2.releaseLock (e, ld) ->
-            assert.ifError e
+          lock2.releaseLock().on 'released', (ld) ->
             assert ld?
             order += '2'
-            lock1.releaseLock (e, ld) ->
-              assert.ifError e
+            lock1.releaseLock().on 'released', (ld) ->
               assert ld?
               order += '1'
 
@@ -443,14 +434,12 @@ describe 'gridfs-locks', () ->
           assert.ifError e
           assert ld?
           order += '2'
-          lock2.releaseLock (e, ld) ->
-            assert.ifError e
+          lock2.releaseLock().on 'released', (ld) ->
             assert ld?
             order += '2'
             assert.equal order, expectedOrder
             done()
-        lock1.releaseLock (e, ld) ->
-          assert.ifError e
+        lock1.releaseLock().on 'released', (ld) ->
           assert ld?
           order += '1'
 
@@ -465,8 +454,7 @@ describe 'gridfs-locks', () ->
             assert.ifError e
             assert ld?
             order += '2'
-            lock2.releaseLock (e, ld) ->
-              assert.ifError e
+            lock2.releaseLock().on 'released', (ld) ->
               assert ld?
               order += '2'),
           { testingCallback: (() -> # This testing callback happens once the lock2 write request is written
@@ -474,14 +462,12 @@ describe 'gridfs-locks', () ->
               assert.ifError e
               assert ld?
               order += '3'
-              lock3.releaseLock (e, ld) ->
-                assert.ifError e
+              lock3.releaseLock().on 'released', (ld) ->
                 assert ld?
                 order += '3'
                 assert.equal order, expectedOrder
                 done()
-            lock1.releaseLock (e, ld) ->
-              assert.ifError e
+            lock1.releaseLock().on 'released', (ld) ->
               assert ld?
               order += '1')}
 
@@ -496,8 +482,7 @@ describe 'gridfs-locks', () ->
             assert.ifError e
             assert ld?
             order += '2'
-            lock2.releaseLock (e, ld) ->
-              assert.ifError e
+            lock2.releaseLock().on 'released', (ld) ->
               assert ld?
               order += '2'),
           { testingCallback: (() -> # This testing callback happens once the lock2 write request is written
@@ -505,14 +490,12 @@ describe 'gridfs-locks', () ->
               assert.ifError e
               assert ld?
               order += '3'
-              lock3.releaseLock (e, ld) ->
-                assert.ifError e
+              lock3.releaseLock().on 'released', (ld) ->
                 assert ld?
                 order += '3'
                 assert.equal order, expectedOrder
                 done()
-            lock1.releaseLock (e, ld) ->
-              assert.ifError e
+            lock1.releaseLock().on 'released', (ld) ->
               assert ld?
               order += '1')}
 
@@ -533,12 +516,10 @@ describe 'gridfs-locks', () ->
               assert.ifError e
               assert ld?
               order += '3'
-              lock3.releaseLock (e, ld) ->
-                assert.ifError e
+              lock3.releaseLock().on 'released', (ld) ->
                 assert ld?
                 order += '3'
-                lock1.releaseLock (e, ld) ->
-                  assert.ifError e
+                lock1.releaseLock().on 'released', (ld) ->
                   assert ld?
                   order += '1'
                   assert.equal order, expectedOrder
@@ -582,8 +563,7 @@ describe 'gridfs-locks', () ->
           assert.ifError e
           assert ld?
           order += '2'
-          lock2.releaseLock (e, ld) ->
-            assert.ifError e
+          lock2.releaseLock().on 'released', (ld) ->
             assert ld?
             order += '2'
             assert.equal order, expectedOrder
@@ -604,8 +584,7 @@ describe 'gridfs-locks', () ->
             assert.ifError e
             assert ld?
             order += '3'
-            lock3.releaseLock (e, ld) ->
-              assert.ifError e
+            lock3.releaseLock().on 'released', (ld) ->
               assert ld?
               order += '3'
               assert order is expectedOrder
@@ -622,8 +601,7 @@ describe 'gridfs-locks', () ->
           assert.ifError e
           assert ld?
           order += '2'
-          lock2.releaseLock (e, ld) ->
-            assert.ifError e
+          lock2.releaseLock().on 'released', (ld) ->
             assert ld?
             order += '2'
             assert.equal order, expectedOrder
@@ -640,8 +618,7 @@ describe 'gridfs-locks', () ->
             assert.ifError e
             assert ld?
             order += '2'
-            lock2.releaseLock (e, ld) ->
-              assert.ifError e
+            lock2.releaseLock().on 'released', (ld) ->
               assert ld?
               order += '2'),
           { testingCallback: (() -> # This testing callback happens once the lock2 write request is written
@@ -649,8 +626,7 @@ describe 'gridfs-locks', () ->
               assert.ifError e
               assert ld?
               order += '3'
-              lock3.releaseLock (e, ld) ->
-                assert.ifError e
+              lock3.releaseLock().on 'released', (ld) ->
                 assert ld?
                 order += '3'
                 assert.equal order, expectedOrder
@@ -667,8 +643,7 @@ describe 'gridfs-locks', () ->
             assert.ifError e
             assert ld?
             order += '2'
-            lock2.releaseLock (e, ld) ->
-              assert.ifError e
+            lock2.releaseLock().on 'released', (ld) ->
               assert ld?
               order += '2'),
           { testingCallback: (() -> # This testing callback happens once the lock2 write request is written
@@ -676,8 +651,7 @@ describe 'gridfs-locks', () ->
               assert.ifError e
               assert ld?
               order += '3'
-              lock3.releaseLock (e, ld) ->
-                assert.ifError e
+              lock3.releaseLock().on 'released', (ld) ->
                 assert ld?
                 order += '3'
                 assert.equal order, expectedOrder
@@ -700,12 +674,10 @@ describe 'gridfs-locks', () ->
               assert.ifError e
               assert ld?
               order += '3'
-              lock3.releaseLock (e, ld) ->
-                assert.ifError e
+              lock3.releaseLock().on 'released', (ld) ->
                 assert ld?
                 order += '3'
-                lock1.releaseLock (e, ld) ->
-                  assert.ifError e
+                lock1.releaseLock().on 'released', (ld) ->
                   assert ld?
                   order += '1'
                   assert.equal order, expectedOrder
@@ -728,8 +700,7 @@ describe 'gridfs-locks', () ->
               assert.ifError e
               assert ld?
               order += '3'
-              lock3.releaseLock (e, ld) ->
-                assert.ifError e
+              lock3.releaseLock().on 'released', (ld) ->
                 assert ld?
                 order += '3'
                 assert.equal order, expectedOrder
@@ -763,8 +734,7 @@ describe 'gridfs-locks', () ->
             assert.ifError e
             assert ld?
             myTimeout 5, l, (l) ->
-              l.releaseLock (e, ld) ->
-                assert.ifError e
+              l.releaseLock().on 'released', (ld) ->
                 assert ld?
                 released++
                 done() if released is numLocks
@@ -781,8 +751,7 @@ describe 'gridfs-locks', () ->
             currentValue += 0.5
             myTimeout 5, l, (l) ->
               currentValue += 0.5
-              l.releaseLock (e, ld) ->
-                assert.ifError e
+              l.releaseLock().on 'released', (ld) ->
                 assert ld?
                 released++
                 done() if released is numLocks*writeLockFraction
@@ -800,8 +769,7 @@ describe 'gridfs-locks', () ->
               currentValue += 0.5
               myTimeout 5, l, (l) ->
                 currentValue += 0.5
-                l.releaseLock (e, ld) ->
-                  assert.ifError e
+                l.releaseLock().on 'released', (ld) ->
                   assert ld?
                   released++
                   done() if released is numLocks
@@ -811,8 +779,7 @@ describe 'gridfs-locks', () ->
               assert ld?
               assert.equal Math.floor(currentValue), currentValue
               myTimeout 5, l, (l) ->
-                l.releaseLock (e, ld) ->
-                  assert.ifError e
+                l.releaseLock().on 'released', (ld) ->
                   assert ld?
                   released++
                   done() if released is numLocks

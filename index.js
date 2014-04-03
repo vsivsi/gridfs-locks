@@ -25,20 +25,17 @@ var LockCollection = exports.LockCollection = function(db, options) {
   eventEmitter.call(self);  // We are an eventEmitter
 
   if (!db || typeof db.collection !== 'function') {
-    self._emitError("LockCollection 'db' parameter must be a valid Mongodb connection object.");
-    return;
+    return self._emitError("LockCollection 'db' parameter must be a valid Mongodb connection object.");
   }
 
   if (options && typeof options !== 'object') {
-    self._emitError("LockCollection 'options' parameter must be an object.");
-    return;
+    return self._emitError("LockCollection 'options' parameter must be an object.");
   }
 
   options = options || {};
 
   if (options.root && (typeof options.root !== 'string')) {
-    self._emitError("LockCollection 'options.root' must be a string or falsy.");
-    return;
+    return self._emitError("LockCollection 'options.root' must be a string or falsy.");
   }
 
   options.root = options.root || 'fs';
@@ -47,11 +44,11 @@ var LockCollection = exports.LockCollection = function(db, options) {
 
     if (err) { return self._emitError(err); }
 
-    self.collection = collection;
-
     // Ensure unique files_id so there can only be one lock doc per file
     collection.ensureIndex([['files_id', 1]], {unique:true}, function(err, index) {
+
       if (err) { return self._emitError(err); }
+      self.collection = collection;
       self.emit('ready');
     });
   });
@@ -70,6 +67,7 @@ LockCollection.prototype._emitError = function emitError(err) {
   var self = this;
   if (typeof err == 'string') err = new Error(err);
   setImmediate(function () { self.emit('error', err); });
+  return self;
 }
 
 // Create a new Lock object
@@ -85,13 +83,23 @@ LockCollection.prototype._emitError = function emitError(err) {
 //          metaData: side information to store in the lock document, useful for debugging  Default: null
 //
 var Lock = exports.Lock = function(fileId, lockCollection, options) {
-  if(!(this instanceof Lock)) return new Lock(fileId, lockCollection, options);
-  if (!(lockCollection instanceof LockCollection)) {
-    throw new Error("Invalid lockCollection object.");
-    return;
-  }
+
+  if (!(this instanceof Lock)) return new Lock(fileId, lockCollection, options);
 
   var self = this;
+
+  if (options && typeof options !== 'object') {
+    return self._emitError("Lock 'options' parameter must be an object.");
+  }
+
+  if (!(lockCollection instanceof LockCollection)) {
+    return self._emitError("Lock invalid 'lockCollection' object.");
+  }
+
+  if (!lockCollection.collection) {
+    return self._emitError("Lock 'lockCollection' must be 'ready'.");
+  }
+
   options = options || {};
   self.lockCollection = lockCollection;
   self.collection = lockCollection.collection;
@@ -108,6 +116,15 @@ var Lock = exports.Lock = function(fileId, lockCollection, options) {
   self.heldLock = null;
 };
 
+Lock.prototype = eventEmitter.prototype;
+
+Lock.prototype._emitError = function emitError(err) {
+  var self = this;
+  if (typeof err == 'string') err = new Error(err);
+  setImmediate(function () { self.emit('error', err); });
+  return self;
+}
+
 // Release a currently held lock.
 //
 // Parameters:
@@ -115,26 +132,14 @@ var Lock = exports.Lock = function(fileId, lockCollection, options) {
 // callback: function(err, doc)  Mandatory.
 //     doc: The new unheld lock document in the database
 //
-Lock.prototype.releaseLock = function(callback) {
+Lock.prototype.releaseLock = function () {
 
   var self = this;
   var query = null,
       update = null;
 
-  if (callback && typeof callback !== 'function') {
-    throw new Error("Callback must be a function")
-  }
-
-  function cb(err, doc) {
-    if (callback) {
-      callback(err, doc);
-    } else if (err) {
-      throw err;
-    }
-  }
-
   if (!(self.heldLock)) {
-    return cb(new Error("Cannot release an unheld lock."));
+    return self._emitError("Lock.releaseLock cannot release an unheld lock.");
   }
   if(self.lockType === 'r') {
     query = {files_id: self.fileId, read_locks: {$gt: 0}};
@@ -143,18 +148,22 @@ Lock.prototype.releaseLock = function(callback) {
     query = {files_id: self.fileId, write_lock: true};
     update = {$set: {write_lock: false, meta: null}};
   } else {
-    return cb(new Error("Invalid lockType: " + self.lockType));
+    return self._emitError("Lock.releaseLock invalid lockType.");
   }
   self.collection.findAndModify(query, [], update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
+    if (err) { return self._emitError(err); }
+
     self.lockType = null;
     self.query = null;
     self.update = null;
     self.heldLock = null;
-    if (err == null && doc == null) {
-      err = new Error("Lock document not found in collection");
+    if (doc == null) {
+      return self._emitError("Lock.releaseLock Lock document not found in collection.");
     }
-    cb(err, doc);
+
+    self.emit('released', doc);
   });
+  return self;  // allow chaining
 };
 
 // Prevent expiration of a held lock for another lockExpiration seconds
