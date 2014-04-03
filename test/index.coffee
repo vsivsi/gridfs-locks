@@ -13,68 +13,64 @@ describe 'gridfs-locks', () ->
   before (done) ->
     server = new mongo.Server 'localhost', 27017
     db = new mongo.Db 'gridfs_locks_test', server, {w:1}
-    db.open done
+    db.open () ->
+      done()
 
   describe 'LockCollection', () ->
+
+    lockColl = null
+
+    before (done) ->
+      lockColl = LockCollection db
+      lockColl.on 'ready', done
 
     it "should be a function", () ->
       assert 'function' is typeof LockCollection
 
-    it "shouldn't create instances without the new keyword", () ->
-      assert.throws (() -> LockCollection()), /LockCollections must be created using the/
+    it "should create instances without the new keyword", () ->
+      assert lockColl instanceof LockCollection
 
-    it "shouldn't create instances without having used the .created method", () ->
-      assert.throws (() -> new LockCollection({})), /LockCollections must be created using the/
-      assert.throws (() -> new LockCollection({},{})), /LockCollections must be created using the/
+    it "should require a valid mongo db connection object", (done) ->
+      LockCollection(null).on 'error', (e) ->
+        assert e.toString() is "Error: LockCollection 'db' parameter must be a valid Mongodb connection object."
+        done()
 
-    it "should require a valid collection parameter", () ->
-      assert.throws (() -> new LockCollection({}, { _created: true})), /Invalid collection parameter/
+    it "should require options to be an object", (done) ->
+      LockCollection(db, 1).on 'error', (e) ->
+        assert e.toString() is "Error: LockCollection 'options' parameter must be an object."
+        done()
 
-    describe 'LockCollection.create', () ->
+    it "should require a non-falsy root to be a string", (done) ->
+      LockCollection(db, {root: 1}).on 'error', (e) ->
+        assert e.toString() is "Error: LockCollection 'options.root' must be a string or falsy."
+        done()
 
-      lc = null
+    it "should create a valid mongodb collection", () ->
+      assert lockColl.collection?
+      assert.equal typeof lockColl.collection.find, 'function'
 
-      before (done) ->
-        LockCollection.create db, false, {}, (e, lockColl) ->
-          assert.ifError e
-          lc = lockColl
-          done()
+    it "should properly index the .locks collection", (done) ->
+      lockColl.collection.indexExists "files_id_1", (e, ii) ->
+        assert.ifError e
+        assert.equal ii, true
+        done()
 
-      it "should require a valid mongo db connection object", () ->
-        assert.throws (() -> LockCollection.create(null)), /db is not a valid Mongodb connection object/
+    it "should use the default GridFS collection root when no root is given", () ->
+      assert.equal lockColl.collection.collectionName, mongo.GridStore.DEFAULT_ROOT_COLLECTION + ".locks"
 
-      it "should require a non-falsy root to be a string", () ->
-        assert.throws (() -> LockCollection.create(db, 1)), /root must be a string or falsy/
+    it "should have nine keys", () ->
+      assert.equal Object.keys(lockColl).length, 9
 
-      it "should require a callback function", () ->
-        assert.throws (() -> LockCollection.create(db, false, {})), /A callback function must be provided/
-
-      it "should create a valid mongodb collection", () ->
-        assert lc.collection?
-        assert.equal typeof lc.collection.find, 'function'
-
-      it "should properly index the .locks collection", (done) ->
-        lc.collection.indexExists "files_id_1", (e, ii) ->
-          assert.ifError e
-          assert.equal ii, true
-          done()
-
-      it "should use the default GridFS collection root when no root is given", () ->
-        assert.equal lc.collection.collectionName, mongo.GridStore.DEFAULT_ROOT_COLLECTION + ".locks"
-
-      it "should have 6 keys", () ->
-        assert.equal Object.keys(lc).length, 6
-
-      it "should properly record all options", (done) ->
-        LockCollection.create db, 'test', { w: 16, timeOut: 16, pollingInterval: 16, lockExpiration: 16, metaData: 16 }, (e, lc) ->
-          assert.ifError e
-          assert.equal lc.collection.collectionName, "test.locks"
-          assert.equal lc.writeConcern, 16
-          assert.equal lc.timeOut, 16
-          assert.equal lc.pollingInterval, 16
-          assert.equal lc.lockExpiration, 16
-          assert.equal lc.metaData, 16
-          done()
+    it "should properly record all options", (done) ->
+      lc = LockCollection db, { root: "test", w: 16, timeOut: 16, pollingInterval: 16, lockExpiration: 16, metaData: 16 }
+      lc.on 'ready', () ->
+        assert.equal lc.collection.collectionName, "test.locks"
+        assert.equal lc.writeConcern, 16
+        assert.equal lc.timeOut, 16
+        assert.equal lc.pollingInterval, 16
+        assert.equal lc.lockExpiration, 16
+        assert.equal lc.metaData, 16
+        done()
 
   describe 'Lock', () ->
 
@@ -84,9 +80,8 @@ describe 'gridfs-locks', () ->
 
     before (done) ->
       fileId = new mongo.BSONPure.ObjectID
-      LockCollection.create db, false, {}, (e, lc) ->
-        assert.ifError e
-        lockColl = lc
+      lockColl = LockCollection db
+      lockColl.on 'ready', () ->
         lock = Lock fileId, lockColl, {}
         done()
 
@@ -372,10 +367,8 @@ describe 'gridfs-locks', () ->
     id = null
 
     before (done) ->
-      LockCollection.create db, false, { timeOut: 2, pollingInterval: 1 }, (e, lc) ->
-        assert.ifError e
-        lockColl = lc
-        done()
+      lockColl = LockCollection db, { timeOut: 2, pollingInterval: 1 }
+      lockColl.on 'ready', done
 
     beforeEach () ->
       id = new mongo.BSONPure.ObjectID
@@ -562,10 +555,8 @@ describe 'gridfs-locks', () ->
     id = null
 
     before (done) ->
-      LockCollection.create db, false, { timeOut: 2, pollingInterval: 1, lockExpiration: 1 }, (e, lc) ->
-        assert.ifError e
-        lockColl = lc
-        done()
+      lockColl = LockCollection db, { timeOut: 2, pollingInterval: 1, lockExpiration: 1 }
+      lockColl.on 'ready', done
 
     beforeEach () ->
       id = new mongo.BSONPure.ObjectID
@@ -757,10 +748,8 @@ describe 'gridfs-locks', () ->
       setTimeout cb, Math.floor(Math.random()*t), p
 
     before (done) ->
-      LockCollection.create db, false, { timeOut: 60, pollingInterval: 1, lockExpiration: 1 }, (e, lc) ->
-        assert.ifError e
-        lockColl = lc
-        done()
+      lockColl = LockCollection db, { timeOut: 60, pollingInterval: 1, lockExpiration: 1 }
+      lockColl.on 'ready', done
 
     beforeEach () ->
       id = new mongo.BSONPure.ObjectID

@@ -4,84 +4,73 @@
      See included LICENSE file for details.
 ************************************************************************/
 
+eventEmitter = require('events').EventEmitter;
+
 //
 // Parameters:
 //
-// collection: a valid mongodb collection object
+// db:   a valid mongodb connection object  Mandatory
 // options object:
+//    root:             the string of the root mongodb collection name  Default: 'fs'
 //    w:                mongo writeconcern  Default: 1
 //    pollingInterval:  Seconds between successive attempts to acquire a lock while waiting  Default: 5 sec
 //    lockExpiration:   Seconds until an unrenewed lock expires in the database  Default: Never
 //    timeOut:          Seconds to poll when obtaining a lock that is not available.  Default: Do not poll
 //    metaData:         side information to store in the lock documents, useful for debugging  Default: null
 //
-// NOTE! -- Do not create a LockCollection directly using new, use the 'create' static method below
-//
-var LockCollection = exports.LockCollection = function(collection, options) {
-
+var LockCollection = exports.LockCollection = function(db, options) {
   var self = this;
+  if (!(self instanceof LockCollection)) { return new LockCollection(db, options); }
 
-  if(!(self instanceof LockCollection) || (!options || !options._created)) {
-    throw new Error("LockCollections must be created using the 'LockCollection.create' static method")
-    return;
-  };
+  eventEmitter.call(self);  // We are an eventEmitter
 
-  if (typeof collection.find !== 'function') {
-    throw new Error("Invalid collection parameter in LockCollection constructor")
+  if (!db || typeof db.collection !== 'function') {
+    self._emitError("LockCollection 'db' parameter must be a valid Mongodb connection object.");
     return;
   }
+
+  if (options && typeof options !== 'object') {
+    self._emitError("LockCollection 'options' parameter must be an object.");
+    return;
+  }
+
+  options = options || {};
+
+  if (options.root && (typeof options.root !== 'string')) {
+    self._emitError("LockCollection 'options.root' must be a string or falsy.");
+    return;
+  }
+
+  options.root = options.root || 'fs';
+  collectionName = options.root + '.locks';
+  db.collection(collectionName, function(err, collection) {
+
+    if (err) { return self._emitError(err); }
+
+    self.collection = collection;
+
+    // Ensure unique files_id so there can only be one lock doc per file
+    collection.ensureIndex([['files_id', 1]], {unique:true}, function(err, index) {
+      if (err) { return self._emitError(err); }
+      self.emit('ready');
+    });
+  });
 
   self.writeConcern = options.w == null ? 1 : options.w;
   self.timeOut = options.timeOut || 0;                  // Locks do not poll by default
   self.pollingInterval = options.pollingInterval || 5;  // 5 secs
   self.lockExpiration = options.lockExpiration || 0;    // Never
   self.metaData = options.metaData || null;             // None
-  self.collection = collection;
 
 };
 
-// Static method for creation / initialization of a new LockCollection object.
-//
-// Use of a static method is necessary because the constructor can't be asyncronous
-//
-// Parameters:
-//
-// db:   a valid mongodb connection object  Mandatory
-// root: the string of the root mongodb collection name  Default: 'fs'
-// options object:
-//    w:                mongo writeconcern  Default: 1
-//    pollingInterval:  Seconds between successive attempts to acquire a lock while waiting  Default: 3
-//    lockExpiration:   Seconds until an unrenewed lock expires in the database  Default: 300
-//    timeOut: Seconds to poll when obtaining a lock that is not available.  Default: 300
-// callback: function(err, lockCollection)  Mandatory.
-//
-LockCollection.create = function(db, root, options, callback) {
-  if (!db || typeof db.collection !== 'function') {
-    throw new Error("db is not a valid Mongodb connection object.")
-    return;
-  }
-  if (root && (typeof root !== 'string')) {
-    throw new Error("root must be a string or falsy.")
-    return;
-  }
-  if (typeof callback !== 'function') {
-    throw new Error("A callback function must be provided")
-    return;
-  }
+LockCollection.prototype = eventEmitter.prototype;
 
-  options = options || {};
-  options._created = true;   // flag that this method was called
-  root = root || 'fs';
-  collectionName = root + '.locks';
-  db.collection(collectionName, function(err, collection) {
-    if(err) return callback(err);
-    // Ensure unique files_id so there can only be one lock doc per file
-    collection.ensureIndex([['files_id', 1]], {unique:true}, function(err, index) {
-      if(err) return callback(err);
-      callback(null, new LockCollection(collection, options));
-    });
-  });
-};
+LockCollection.prototype._emitError = function emitError(err) {
+  var self = this;
+  if (typeof err == 'string') err = new Error(err);
+  setImmediate(function () { self.emit('error', err); });
+}
 
 // Create a new Lock object
 //
