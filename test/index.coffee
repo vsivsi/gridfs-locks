@@ -273,7 +273,7 @@ describe 'gridfs-locks', () ->
             assert ld?
             assert id.equals ld.files_id
             assert ld.expires instanceof Date
-            assert ld.expires > lock1.timeCreated
+            assert ld.expires.getTime() is lock1.timeCreated.getTime()
             assert.equal ld.read_locks, 0
             assert.equal ld.write_lock, false
             assert.equal ld.write_req, false
