@@ -282,11 +282,38 @@ describe 'gridfs-locks', () ->
             assert.equal ld.meta, null
             done()
 
-        it "should properly clear the lock state on a released read lock", () ->
+        it "should properly clear the lock state on a released write lock", () ->
           assert.equal lock1.lockType, null
           assert.equal lock1.query, null
           assert.equal lock1.update, null
           assert.equal lock1.heldLock, null
+
+      describe 'removeLock', () ->
+
+        before (done) ->
+          lock2.obtainWriteLock().on 'locked', (ld) ->
+            assert ld?
+            done()
+
+        it "should return a valid lock document", (done) ->
+          lock2.removeLock().on 'removed', (ld) ->
+            assert ld?
+            assert id.equals ld.files_id
+            assert ld.expires instanceof Date
+            assert ld.expires.getTime() is lock2.timeCreated.getTime()
+            assert.equal ld.read_locks, 0
+            assert.equal ld.write_lock, false
+            assert.equal ld.write_req, false
+            assert.equal ld.reads, 0
+            assert ld.writes > 1
+            assert.equal ld.meta, null
+            done()
+
+        it "should properly clear the lock state on a removed write lock", () ->
+          assert.equal lock2.lockType, null
+          assert.equal lock2.query, null
+          assert.equal lock2.update, null
+          assert.equal lock2.heldLock, null
 
     describe 'releaseLock', () ->
       lock1 = null
@@ -326,6 +353,58 @@ describe 'gridfs-locks', () ->
       it "should fail on missing lock document", (done) ->
         lock2.fileId = id2
         lock2.releaseLock().on 'error', (e) ->
+          assert.throws (() -> throw e), /document not found in collection/
+          done()
+        lock2.on 'released', () ->
+          assert false
+
+    describe 'removeLock', () ->
+      lock1 = null
+      lock2 = null
+      id = null
+      id2 = null
+
+      before (done) ->
+        id = new mongo.BSONPure.ObjectID
+        id2 = new mongo.BSONPure.ObjectID
+        lock1 = Lock id, lockColl, {}
+        lock2 = Lock id, lockColl, {}
+        lock2.obtainWriteLock().on 'locked', (ld) ->
+          assert ld?
+          done()
+
+      afterEach () ->
+        lock1.removeAllListeners()
+        lock2.removeAllListeners()
+
+      it "should fail to release an unheld lock", (done) ->
+        lock1.removeLock().on 'error', (e) ->
+          assert.throws (() -> throw e), /cannot release an unheld lock/
+          done()
+        lock1.on 'released', () ->
+          assert false
+
+      it "should fail on unsupported lockType", (done) ->
+        lock2.lockType = "X"
+        lock2.removeLock().on 'error', (e) ->
+          assert.throws (() -> throw e), /invalid lockType/
+          lock2.lockType = "w"
+          done()
+        lock2.on 'released', () ->
+          assert false
+
+      it "should fail on a read locked document", (done) ->
+        lock2.lockType = "r"
+        lock2.removeLock().on 'error', (e) ->
+          assert.throws (() -> throw e), /cannot remove a readLock/
+          lock2.lockType = "w"
+          done()
+        lock2.on 'released', () ->
+          assert false
+
+      it "should fail on missing lock document", (done) ->
+        lock2.fileId = id2
+        lock2.removeLock().on 'error', (e) ->
           assert.throws (() -> throw e), /document not found in collection/
           done()
         lock2.on 'released', () ->
@@ -686,7 +765,6 @@ describe 'gridfs-locks', () ->
           assert ld?
           lock2.obtainReadLock().on 'locked', (ld) ->
             assert ld?
-            console.log ld.expires.getTime(), lock2.lockExpireTime.getTime()
             assert ld.expires.getTime() is lock2.lockExpireTime.getTime()
             lock2.releaseLock().on 'released', (ld) ->
               assert ld?
@@ -700,7 +778,6 @@ describe 'gridfs-locks', () ->
           assert ld?
           lock2.obtainReadLock().on 'locked', (ld) ->
             assert ld?
-            console.log ld.expires.getTime(), lock2.lockExpireTime.getTime()
             assert ld.expires.getTime() is lock2.lockExpireTime.getTime()
             lock2.releaseLock().on 'released', (ld) ->
               assert ld?
@@ -708,18 +785,18 @@ describe 'gridfs-locks', () ->
 
   describe 'testing under load', () ->
 
-    this.timeout 30000
+    this.timeout 300000
 
     lockColl = null
     locksArray = []
-    numLocks = 10000
+    numLocks = 5000
     writeLockFraction = 0.01
 
     myTimeout = (t, p, cb) ->
       setTimeout cb, Math.floor(Math.random()*t), p
 
     before (done) ->
-      lockColl = LockCollection db, { timeOut: 60, pollingInterval: 1, lockExpiration: 1 }
+      lockColl = LockCollection db, { timeOut: 60, pollingInterval: 1, lockExpiration: 120 }
       lockColl.on 'ready', done
 
     beforeEach () ->
@@ -729,21 +806,24 @@ describe 'gridfs-locks', () ->
     it 'should accomodate hundreds of simultaneous readers on a resource', (done) ->
       released = 0
       for l in locksArray
-        myTimeout 10000, l, (l) ->
+        myTimeout Math.floor(10000*Math.random()), l, (l) ->
           l.obtainReadLock().on 'locked', (ld) ->
+            # console.log "RL", released, ld.write_lock, ld.write_req, ld.read_locks
             assert ld?
             myTimeout 5, l, (l) ->
               l.releaseLock().on 'released', (ld) ->
                 assert ld?
                 released++
+                # console.log "RUL", released, ld.write_lock, ld.write_req, ld.read_locks
                 done() if released is numLocks
 
     it 'should accomodate hundreds of simultaneous writers on a resource', (done) ->
       released = 0
       currentValue = 0
       for l, x in locksArray when x < numLocks*writeLockFraction
-        myTimeout 10000, l, (l) ->
+        myTimeout Math.floor(10000*Math.random()), l, (l) ->
           l.obtainWriteLock().on 'locked', (ld) ->
+            # console.log "WL", released, ld.write_lock, ld.write_req, ld.read_locks
             assert ld?
             assert.equal Math.floor(currentValue), currentValue
             currentValue += 0.5
@@ -752,15 +832,17 @@ describe 'gridfs-locks', () ->
               l.releaseLock().on 'released', (ld) ->
                 assert ld?
                 released++
+                # console.log "WUL", released, ld.write_lock, ld.write_req, ld.read_locks
                 done() if released is numLocks*writeLockFraction
 
     it 'should accomodate hundreds of simultaneous readers/writers on a resource', (done) ->
       released = 0
       currentValue = 0
       for l, x in locksArray
-        myTimeout 10000, l, (l) ->
+        myTimeout Math.floor(10000*Math.random()), l, (l) ->
           if Math.random() <= writeLockFraction
             l.obtainWriteLock().on 'locked', (ld) ->
+              # console.log "WL", released, ld.write_lock, ld.write_req, ld.read_locks
               assert ld?
               assert.equal Math.floor(currentValue), currentValue
               currentValue += 0.5
@@ -769,15 +851,18 @@ describe 'gridfs-locks', () ->
                 l.releaseLock().on 'released', (ld) ->
                   assert ld?
                   released++
+                  # console.log "WUL", released, ld.write_lock, ld.write_req, ld.read_locks
                   done() if released is numLocks
           else
             l.obtainReadLock().on 'locked', (ld) ->
+              # console.log "RL", released, ld.write_lock, ld.write_req, ld.read_locks
               assert ld?
               assert.equal Math.floor(currentValue), currentValue
               myTimeout 5, l, (l) ->
                 l.releaseLock().on 'released', (ld) ->
                   assert ld?
                   released++
+                  # console.log "RUL", released, ld.write_lock, ld.write_req, ld.read_locks
                   done() if released is numLocks
 
   after (done) ->

@@ -115,24 +115,62 @@ var Lock = exports.Lock = function(fileId, lockCollection, options) {
 
 Lock.prototype = eventEmitter.prototype;
 
-// Release a currently held lock.
+// Remove a currently held write lock.
 //
 // Parameters:
 //
-// remove:  Boolean, when true the lock document is released and removed. true is only valid for write locks.
-//
 // Emits:
-//    'released':
-//         doc: The new unheld lock document in the database
 //    'removed':
 //         null: The lock document has been removed
 //    'error':
 //         err: Any error that occurs
 //
+Lock.prototype.removeLock = function () {
 
-// WIP: Add removeLock
-// WIP: Add logic for both Readlock release cases
-Lock.prototype.releaseLock = function (remove) {
+  var self = this;
+  var query = {files_id: self.fileId, write_lock: true};
+
+  if (!(self.heldLock)) {
+    return emitError(self, "Lock.removeLock cannot release an unheld lock.");
+  }
+
+  // self.timeCreated = new Date();
+  if (self.lockType === 'r') {
+    return emitError(self, "Lock.removeLock cannot remove a readLock.");
+  } else if (self.lockType[0] === 'w') {
+    self.collection.findAndRemove(query, [], {w: self.lockCollection.writeConcern}, function (err, doc) {
+      if (err) { return emitError(self, err); }
+
+      self.lockType = null;
+      self.query = null;
+      self.update = null;
+      self.heldLock = null;
+      if (doc == null) {
+        return emitError(self, "Lock.removeLock Lock document not found in collection.");
+      }
+      doc.expires = self.timeCreated
+      doc.write_lock = false
+      self.emit('removed', doc);
+    });
+  } else {
+    return emitError(self, "Lock.removeLock invalid lockType.");
+  }
+
+  return self;  // allow chaining
+};
+
+
+// Release a currently held lock.
+//
+// Parameters:
+//
+// Emits:
+//    'released':
+//         doc: The new unheld lock document in the database
+//    'error':
+//         err: Any error that occurs
+//
+Lock.prototype.releaseLock = function () {
 
   var self = this;
   var query = null,
@@ -141,16 +179,23 @@ Lock.prototype.releaseLock = function (remove) {
   if (!(self.heldLock)) {
     return emitError(self, "Lock.releaseLock cannot release an unheld lock.");
   }
+
   // self.timeCreated = new Date();
-  if(self.lockType === 'r') {
-    query = {files_id: self.fileId, read_locks: {$gt: 0}};
-    update = {$inc: {read_locks: -1}, $set: {meta: null}};
-  } else if(self.lockType[0] === 'w') {
-    query = {files_id: self.fileId, write_lock: true};
-    update = {$set: {write_lock: false, expires: self.timeCreated, meta: null}};
+  if (self.lockType === 'r') {
+    releaseReadLock(self);
+  } else if (self.lockType[0] === 'w') {
+    releaseWriteLock(self);
   } else {
     return emitError(self, "Lock.releaseLock invalid lockType.");
   }
+  return self;  // allow chaining
+};
+
+var releaseWriteLock = function (self) {
+
+  var query = {files_id: self.fileId, write_lock: true},
+      update = {$set: {write_lock: false, expires: self.timeCreated, meta: null}};
+
   self.collection.findAndModify(query, [], update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
     if (err) { return emitError(self, err); }
 
@@ -161,10 +206,55 @@ Lock.prototype.releaseLock = function (remove) {
     if (doc == null) {
       return emitError(self, "Lock.releaseLock Lock document not found in collection.");
     }
-
     self.emit('released', doc);
   });
-  return self;  // allow chaining
+}
+
+var releaseReadLock = function (self) {
+
+  var query = {files_id: self.fileId, read_locks: {$gt: 1}},
+      update = {$inc: {read_locks: -1}, $set: {meta: null}};
+
+  // Case for read_locks > 1
+  self.collection.findAndModify(query, [], update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
+    if (err) { return emitError(self, err); }
+    if (doc) {
+      self.lockType = null;
+      self.query = null;
+      self.update = null;
+      self.heldLock = null;
+      return self.emit('released', doc);
+
+    } else {
+
+      query = {files_id: self.fileId, read_locks: 1};
+      update = {$set: {read_locks: 0, expires: self.timeCreated, meta: null}};
+
+      // Case for read_locks == 1
+      self.collection.findAndModify(query, [], update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
+        if (err) { return emitError(self, err); }
+        if (doc) {
+          self.lockType = null;
+          self.query = null;
+          self.update = null;
+          self.heldLock = null;
+          return self.emit('released', doc);
+        } else {
+          // If another readLock released between the above two findAndModify calls they can both fail... so keep trying.
+          // console.log("Retrying to release read lock...");
+          // Avoid an infinite loop when lock document no longer exists
+          self.collection.findOne({files_id: self.fileId, read_locks: {$gt: 0}}, function (err, doc) {
+            if (err) { return emitError(self, err); }
+            if (doc == null) {
+              return emitError(self, "Lock.releaseLock Valid read Lock document not found in collection.");
+            } else {
+              self.releaseLock();
+            }
+          });
+        }
+      });
+    }
+  });
 };
 
 // Prevent expiration of a held lock for another lockExpiration seconds
@@ -180,30 +270,21 @@ Lock.prototype.releaseLock = function (remove) {
 //    'error':
 //         err: Any error that occurs
 //
-Lock.prototype.renewLock = function(event) {
+Lock.prototype.renewLock = function() {
   var self = this;
   if (!(self.heldLock)) {
     return emitError(self, "Lock.renewLock cannot renew an unheld lock.");
   }
-  event = event || 'renewed';
   self.lockExpireTime = new Date(new Date().getTime() + (self.lockExpiration || never));
-  self.collection.findAndModify({files_id: self.fileId, expires: {$lt: self.lockExpireTime}},
+  self.collection.findAndModify({files_id: self.fileId},
     [],
     {$set: {expires: self.lockExpireTime}},
     {w: self.lockCollection.writeConcern, new: true},
     function (err, doc) {
       if (err) { return emitError(self, err); }
-      if (doc == null) {
-        self.collection.findOne({files_id: self.fileId}, function (err, doc) {
-          if (err) { return emitError(self, err); }
-          if (doc == null) { return emitError(self, "Lock.renewLock document not found in collection"); }
-          self.heldLock = doc;
-          self.emit(event, doc);
-        });
-      } else {
-        self.heldLock = doc;
-        self.emit(event, doc);
-      }
+      if (doc == null) { return emitError(self, "Lock.renewLock document not found in collection"); }
+      self.heldLock = doc;
+      return self.emit('renewed', doc);
     });
   return self;
 };
@@ -319,7 +400,7 @@ var initializeLockDoc = function (self, callback) {
 
 var timeoutReadLockQuery = function (self, options) {
   options = options || {};
-  self.lockExpireTime = new Date(new Date().getTime() + (self.lockExpiration || never));
+  self.update.$set.expires = self.lockExpireTime = new Date(new Date().getTime() + (self.lockExpiration || never));
   // Read locks can break writelocks with write_req after more than one polling cycle
   self.query.$or[0].expires.$lt = new Date(new Date() - 2*self.pollingInterval);
   self.collection.findAndModify(self.query,
@@ -335,11 +416,7 @@ var timeoutReadLockQuery = function (self, options) {
         return setTimeout(timeoutReadLockQuery, self.pollingInterval, self, options);
       } else {
         self.heldLock = doc;
-        if (doc.expires < self.lockExpireTime) {
-          return self.renewLock('locked');
-        } else {
-          return self.emit('locked', doc);
-        }
+        return self.emit('locked', doc);
       }
     }
   );
