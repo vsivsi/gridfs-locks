@@ -12,7 +12,7 @@ describe 'gridfs-locks', () ->
 
   before (done) ->
     server = new mongo.Server 'localhost', 27017
-    db = new mongo.Db 'gridfs_locks_test', server, {w:1}
+    db = new mongo.Db 'gridfs_locks_test', server, {w:0}
     db.open () ->
       done()
 
@@ -106,8 +106,8 @@ describe 'gridfs-locks', () ->
         assert.throws (() -> throw e), /'lockCollection' must be 'ready'/
         done()
 
-    it "should have 13 keys", () ->
-      assert.equal Object.keys(lock).length, 13
+    it "should have 14 keys", () ->
+      assert.equal Object.keys(lock).length, 14
 
     it "should create a valid timeCreated Date", () ->
       assert lock.timeCreated instanceof Date
@@ -167,7 +167,8 @@ describe 'gridfs-locks', () ->
         lock1.obtainReadLock().on 'error', (e) ->
           assert.throws (() -> throw e), /cannot obtain an already held lock/
           done()
-        lock1.on 'locked', () ->
+        lock1.on 'locked', (ld) ->
+          console.log "Here!", ld
           assert false
 
       it "should return a valid second read lock on a different lock object", (done) ->
@@ -622,6 +623,34 @@ describe 'gridfs-locks', () ->
       lock2.lockExpiration = 250
       lock3.lockExpiration = 250
 
+    it "should generate expires-soon and expired events", (done) ->
+      lock1.obtainReadLock().on 'expires-soon', (ld) ->
+        assert ld?
+        assert lock1.heldLock?
+        assert.equal lock1.expired, false
+        lock1.on 'expired', (ld) ->
+          assert ld?
+          assert.equal lock1.expired, true
+          assert.equal lock1.heldLock, null
+          done()
+
+    it "should generate multiple expires-soon events when renewed", (done) ->
+      renewed = false
+      lock1.obtainReadLock().on 'expires-soon', (ld) ->
+        assert ld?
+        assert lock1.heldLock?
+        assert.equal lock1.expired, false
+        if renewed
+          lock1.on 'expired', (ld) ->
+            assert ld?
+            assert.equal lock1.expired, true
+            assert.equal lock1.heldLock, null
+            done()
+        else
+          lock1.renewLock().on 'renewed', (ld) ->
+            assert ld?
+            renewed = true
+
     it "should work for a write request waiting on a dead read lock", (done) ->
       expectedOrder = "122"
       order = ''
@@ -717,7 +746,9 @@ describe 'gridfs-locks', () ->
     it "should allow a read request to proceed when a prior write request dies without releasing write_req", (done) ->
       expectedOrder = "1331"
       order = ''
-      lock2.timeOut = 150
+      lock2.timeOut = 100
+      lock1.lockExpiration = 1000
+      lock3.lockExpiration = 1000
       lock1.obtainReadLock().on 'locked', (ld) ->
         assert ld?
         order += '1'
@@ -740,7 +771,8 @@ describe 'gridfs-locks', () ->
     it "should allow a read request to proceed when a prior write request dies waiting for a dead write lock without releasing write_req", (done) ->
       expectedOrder = "133"
       order = ''
-      lock2.timeOut = 150
+      lock2.timeOut = 100
+      lock3.lockExpiration = 1000
       lock1.obtainWriteLock().on 'locked', (ld) ->
         assert ld?
         order += '1'
@@ -864,6 +896,79 @@ describe 'gridfs-locks', () ->
                   released++
                   # console.log "RUL", released, ld.write_lock, ld.write_req, ld.read_locks
                   done() if released is numLocks
+
+  describe 'testing with timeouts and expiration under load', () ->
+
+    this.timeout 300000
+
+    lockColl = null
+    locksArray = []
+    numLocks = 5000
+    writeLockFraction = 0.01
+    deadLockFraction = 0.001
+
+    myTimeout = (t, p, cb) ->
+      setTimeout cb, Math.floor(Math.random()*t), p
+
+    before (done) ->
+      lockColl = LockCollection db, { timeOut: 10, pollingInterval: 1, lockExpiration: 5 }
+      lockColl.on 'ready', done
+
+    beforeEach () ->
+      id = new mongo.BSONPure.ObjectID
+      locksArray = (Lock(id, lockColl, {}) for x in [0...numLocks])
+
+    it 'should accomodate hundreds of simultaneous readers/writers on a resource', (done) ->
+      released = 0
+      timedOut = 0
+      expired = 0
+      currentValue = 0
+      for l, x in locksArray
+        myTimeout Math.floor(10000*Math.random()), l, (l) ->
+          ex = false
+          if Math.random() <= writeLockFraction
+            l.obtainWriteLock().on 'locked', (ld) ->
+              # console.log "** WL", released+timedOut+expired, released, timedOut, expired, ld.write_lock, ld.write_req, ld.read_locks
+              assert ld?
+              assert.equal Math.floor(currentValue), currentValue
+              l.on 'expired', () ->
+                ex = true
+                expired++
+                # console.log "** WEX", released+timedOut+expired, released, timedOut, expired, ld.write_lock, ld.write_req, ld.read_locks
+                done() if released+timedOut+expired is numLocks
+              myTimeout 5, l, (l) ->
+                unless ex or Math.random() < deadLockFraction
+                  currentValue += 1.0
+                  l.releaseLock().on 'released', (ld) ->
+                    assert ld?
+                    released++
+                    # console.log "** WUL", released+timedOut+expired, released, timedOut, expired, ld.write_lock, ld.write_req, ld.read_locks
+                    done() if released+timedOut+expired is numLocks
+            l.on 'timed-out', () ->
+              timedOut++
+              # console.log "** WTO", released+timedOut+expired, released, timedOut, expired
+              done() if released+timedOut+expired is numLocks
+          else
+            l.obtainReadLock().on 'locked', (ld) ->
+              # console.log "RL", released+timedOut+expired, released, timedOut, expired, ld.write_lock, ld.write_req, ld.read_locks
+              assert ld?
+              assert.equal Math.floor(currentValue), currentValue
+              l.on 'expired', () ->
+                ex = true
+                expired++
+                # console.log "REX", released+timedOut+expired, released, timedOut, expired
+                done() if released+timedOut+expired is numLocks
+              myTimeout 5, l, (l) ->
+                unless ex or Math.random() < deadLockFraction
+                  l.releaseLock().on 'released', (ld) ->
+                    assert ld?
+                    released++
+                    # console.log "RUL", released+timedOut+expired, released, timedOut, expired, ld.write_lock, ld.write_req, ld.read_locks
+                    done() if released+timedOut+expired is numLocks
+            l.on 'timed-out', () ->
+              timedOut++
+              # console.log "RTO", released+timedOut+expired, released, timedOut, expired
+              done() if released+timedOut+expired is numLocks
 
   after (done) ->
     db.dropDatabase () ->

@@ -110,6 +110,7 @@ var Lock = exports.Lock = function(fileId, lockCollection, options) {
   self.query = null;
   self.update = null;
   self.heldLock = null;
+  self.expired = false;
   return self;
 };
 
@@ -130,7 +131,7 @@ Lock.prototype.removeLock = function () {
   var self = this;
   var query = {files_id: self.fileId, write_lock: true};
 
-  if (!(self.heldLock)) {
+  if (!(self.heldLock) || self.expired) {
     return emitError(self, "Lock.removeLock cannot release an unheld lock.");
   }
 
@@ -138,6 +139,10 @@ Lock.prototype.removeLock = function () {
   if (self.lockType === 'r') {
     return emitError(self, "Lock.removeLock cannot remove a readLock.");
   } else if (self.lockType[0] === 'w') {
+
+    clearTimeout(self.expiresSoonTimeout);
+    clearTimeout(self.expiredTimeout);
+
     self.collection.findAndRemove(query, [], {w: self.lockCollection.writeConcern}, function (err, doc) {
       if (err) { return emitError(self, err); }
 
@@ -176,9 +181,12 @@ Lock.prototype.releaseLock = function () {
   var query = null,
       update = null;
 
-  if (!(self.heldLock)) {
+  if (!(self.heldLock) || self.expired) {
     return emitError(self, "Lock.releaseLock cannot release an unheld lock.");
   }
+
+  clearTimeout(self.expiresSoonTimeout);
+  clearTimeout(self.expiredTimeout);
 
   // self.timeCreated = new Date();
   if (self.lockType === 'r') {
@@ -266,7 +274,7 @@ var releaseReadLock = function (self) {
 //
 // Emits:
 //    'renewed':
-//         doc: The new unheld lock document in the database
+//         doc: The new lock document in the database
 //    'error':
 //         err: Any error that occurs
 //
@@ -275,7 +283,12 @@ Lock.prototype.renewLock = function() {
   if (!(self.heldLock)) {
     return emitError(self, "Lock.renewLock cannot renew an unheld lock.");
   }
+
+  clearTimeout(self.expiresSoonTimeout);
+  clearTimeout(self.expiredTimeout);
+
   self.lockExpireTime = new Date(new Date().getTime() + (self.lockExpiration || never));
+
   self.collection.findAndModify({files_id: self.fileId},
     [],
     {$set: {expires: self.lockExpireTime}},
@@ -284,6 +297,8 @@ Lock.prototype.renewLock = function() {
       if (err) { return emitError(self, err); }
       if (doc == null) { return emitError(self, "Lock.renewLock document not found in collection"); }
       self.heldLock = doc;
+      self.expiresSoonTimeout = setTimeout(emitExpiresSoonEvent.bind(self, ''), 0.9*(self.lockExpireTime - new Date() - self.pollingInterval));
+      self.expiredTimeout = setTimeout(emitExpiredEvent.bind(self, ''), (self.lockExpireTime - new Date() - self.pollingInterval));
       return self.emit('renewed', doc);
     });
   return self;
@@ -301,6 +316,8 @@ Lock.prototype.renewLock = function() {
 //          doc: The obtained lock document in the database
 //    'timed-out':
 //          null
+//    'expires-soon':
+//          null - This lock has exhausted 90% of its lifetime and will soon expire
 //    'expired':
 //          null - This lock is no longer valid due to expiration
 //    'error':
@@ -321,6 +338,7 @@ Lock.prototype.obtainReadLock = function() {
                         {write_lock: false, write_req: false}]};
     self.update = {$inc: {read_locks: 1, reads: 1}, $set: {write_lock: false, write_req: false, meta: self.metaData}};
     self.lockType = 'r';
+    self.expired = false;
     timeoutReadLockQuery(self);
   });
   return self;
@@ -346,6 +364,8 @@ Lock.prototype.obtainReadLock = function() {
 //          doc: The obtained lock document in the database
 //    'timed-out':
 //          null - No parameters in callback
+//    'expires-soon':
+//          null - This lock has exhausted 90% of its lifetime and will soon expire
 //    'expired':
 //          null - This lock is no longer valid due to expiration
 //    'error':
@@ -365,6 +385,7 @@ Lock.prototype.obtainWriteLock = function(testingOptions) {
                   $or: [{expires: {$lt: new Date()}, write_req: true},
                         {write_lock: false, read_locks: 0}]};
     self.update = {$set: {write_lock: true, write_req: false, read_locks: 0, meta: self.metaData}, $inc:{writes: 1}};
+    self.expired = false;
     self.lockType = 'w';
     timeoutWriteLockQuery(self, testingOptions);
   });
@@ -396,6 +417,22 @@ var initializeLockDoc = function (self, callback) {
     callback);
 };
 
+// Private functions that implement expiration events
+
+var emitExpiredEvent = function () {
+  var self = this;
+  var heldLock = self.heldLock;
+  // console.log("expiring", heldLock);
+  self.heldLock = null;
+  self.expired = true
+  self.emit('expired', heldLock);
+}
+
+var emitExpiresSoonEvent = function () {
+  var self = this;
+  self.emit('expires-soon', self.heldLock);
+}
+
 // Private function that implements polling for locks in the database
 
 var timeoutReadLockQuery = function (self, options) {
@@ -416,6 +453,10 @@ var timeoutReadLockQuery = function (self, options) {
         return setTimeout(timeoutReadLockQuery, self.pollingInterval, self, options);
       } else {
         self.heldLock = doc;
+        if (self.lockExpiration) {
+          self.expiresSoonTimeout = setTimeout(emitExpiresSoonEvent.bind(self, ''), 0.9*(self.lockExpireTime - new Date() - self.pollingInterval));
+          self.expiredTimeout = setTimeout(emitExpiredEvent.bind(self, ''), (self.lockExpireTime - new Date() - self.pollingInterval));
+        }
         return self.emit('locked', doc);
       }
     }
@@ -436,6 +477,10 @@ var timeoutWriteLockQuery = function (self, options) {
       if (err) { return emitError(self, err); }
       if (doc) {
         self.heldLock = doc;
+        if (self.lockExpiration) {
+          self.expiresSoonTimeout = setTimeout(emitExpiresSoonEvent.bind(self, ''), 0.9*(self.lockExpireTime - new Date() - self.pollingInterval));
+          self.expiredTimeout = setTimeout(emitExpiredEvent.bind(self, ''), (self.lockExpireTime - new Date() - self.pollingInterval));
+        }
         return self.emit('locked', doc);
       }
       if (new Date() - self.timeCreated >= self.timeOut) {
