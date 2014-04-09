@@ -2,13 +2,13 @@
 
  `gridfs-locks` implements distributed and [fair read/write locking](https://en.wikipedia.org/wiki/Readers-writer_lock) based on [MongoDB](http://www.mongodb.org/), and is specifically designed to make MongoDB's [GridFS](http://docs.mongodb.org/manual/reference/gridfs/) file-store [safe for concurrent access](https://jira.mongodb.org/browse/NODE-157). It is a [node.js](http://nodejs.org/) [npm package](https://www.npmjs.org/package/gridfs-locks) built on top of the [native `mongodb` driver](https://www.npmjs.org/package/mongodb), and is compatible with the native [GridStore](https://github.com/mongodb/node-mongodb-native/blob/master/docs/gridfs.md) implementation.
 
-NOTE: if you use [gridfs-stream](https://www.npmjs.org/package/gridfs-stream) and need the locking capabilities of this package (and you probably do, see the "Why?" section at the bottom of this README), you should check out [gridfs-locking-stream](https://www.npmjs.org/package/gridfs-locking-stream). It is basically gridfs-stream + gridfs-locks.
+NOTE: if you use [gridfs-stream](https://www.npmjs.org/package/gridfs-stream) and need the locking capabilities of this package (and you probably do... see the "Why?" section at the bottom of this README), you should check out [gridfs-locking-stream](https://www.npmjs.org/package/gridfs-locking-stream). It is basically gridfs-stream + gridfs-locks.
 
 ## What's new in v1.0.0
 Following the [semantic versioning](http://semver.org/) spec, version 1.0.0 contains a few breaking changes from the prototype 0.0.x of `gridfs-locks`. The main difference is that v1.0.0 Lock and LockCollection objects are now [event-emitters](http://nodejs.org/api/events.html). There are three primary impacts of these changes:
 
 1.    All async callbacks have been eliminated from the API method parameter lists and replaced with events
-2.    A much richer set of async events (eg lock expirations) can now be observed and handled in a more intuitive way
+2.    A much richer set of async events (eg. lock expirations) can now be observed and handled in a more intuitive way
 3.    Locks for removed resources can be also be removed so they don't clutter up the lock collection
 
 ### Installation
@@ -36,12 +36,12 @@ db.open(function(err, db) {
   // Setup GridStore, etc.
 
   // Create a lock collection alongside the GridFS collections
-  var lockColl = LockCollection(db, { root: 'fs', timeOut: 60, pollingInterval: 5, lockExpiration: 30 });
+  var lockColl = LockCollection(db, { root: 'fs',
+                                      timeOut: 60,
+                                      pollingInterval: 5,
+                                      lockExpiration: 30 });
 
-  // Error events throw if not handled
-  lockColl.on('error', function (err) {
-    // Handle error
-    });
+  // Add error event handler for lockColl
 
   // 'ready' event when the collection is ready to use
   lockColl.on('ready', function () {
@@ -64,16 +64,6 @@ db.open(function(err, db) {
 
     });
 
-    // Only emitted if timeOut option is != 0
-    lock.on('timed-out', function() {
-        // Didn't get the lock
-    });
-
-    // Error events throw if not handled
-    lock.on('error', function(err) {
-        // Handle Errors on the lock
-    });
-
     // Another lock on same resource ID, use of 'new' is optional
     var lock2 = new Lock(ID, lockColl, {});
 
@@ -88,7 +78,7 @@ db.open(function(err, db) {
 
     });
 
-    // Add error and timed-out event handlers for lock2
+    // Add error and timed-out event handlers for lock and lock2
 
   });
 });
