@@ -159,7 +159,7 @@ lock.on('error', function (err) {
 // see obtainReadLock() and obtainWriteLock() methods below
 
 lock.on('locked', function (ld) { // provides current lock document
-  // Use lock...
+  // Use locked resource...
 });
 
 // event: 'timed-out' - A timeout has occurred while waiting to obtain an unavailable lock
@@ -193,7 +193,7 @@ lock.on('expires-soon', function (ld) { // provides current lock document
   // release or renew...
 });
 
-// event: 'renewed' - A held lock was successfully renewed for another lockExpiration seconds
+// event: 'renewed' - A held lock was successfully renewed for another lifetime
 // see renewLock() method below
 
 lock.on('renewed', function (ld) {
