@@ -1,11 +1,11 @@
 {
   "name": "gridfs-locks",
-  "version": "0.0.7",
+  "version": "1.0.0",
   "description": "Distributed read/write locking based on MongoDB, designed to make GridFS safe for concurrent access",
   "main": "index.js",
   "dependencies": {},
   "devDependencies": {
-    "mongodb": "~1.4.0",
+    "mongodb": ">=1.4.0",
     "coffee-script": "*",
     "mocha": "*"
   },
@@ -29,7 +29,7 @@
     "lock"
   ],
   "engine": {
-    "node": ">=0.10"
+    "node": ">=0.10.25"
   },
   "readmeFilename": "README.md",
   "bugs": {

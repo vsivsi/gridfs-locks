@@ -1,30 +1,14 @@
 # gridfs-locks
 
- `gridfs-locks` implements distributed and [fair read/write locking](https://en.wikipedia.org/wiki/Readers-writer_lock) based on [MongoDB](http://www.mongodb.org/), and is specifically designed to make MongoDB's [GridFS](http://docs.mongodb.org/manual/reference/gridfs/) file-store safe for concurrent access. It is a [node.js](http://nodejs.org/) [npm package](https://www.npmjs.org/package/gridfs-locks) built on top of the [native `mongodb` driver](https://www.npmjs.org/package/mongodb), and is compatible with the native [GridStore](https://github.com/mongodb/node-mongodb-native/blob/master/docs/gridfs.md) implementation.
+ `gridfs-locks` implements distributed and [fair read/write locking](https://en.wikipedia.org/wiki/Readers-writer_lock) based on [MongoDB](http://www.mongodb.org/), and is specifically designed to make MongoDB's [GridFS](http://docs.mongodb.org/manual/reference/gridfs/) file-store [safe for concurrent access](https://jira.mongodb.org/browse/NODE-157). It is a [node.js](http://nodejs.org/) [npm package](https://www.npmjs.org/package/gridfs-locks) built on top of the [native `mongodb` driver](https://www.npmjs.org/package/mongodb), and is compatible with the native [GridStore](https://github.com/mongodb/node-mongodb-native/blob/master/docs/gridfs.md) implementation.
 
-NOTE: if you are a [gridfs-stream](https://www.npmjs.org/package/gridfs-stream) user, but need the locking capabilities of this package, you should check out [gridfs-locking-stream](https://www.npmjs.org/package/gridfs-locking-stream). It is basically gridfs-stream + gridfs-locks
+NOTE: if you use [gridfs-stream](https://www.npmjs.org/package/gridfs-stream) and need the locking capabilities of this package (and you probably do, see the "Why?" section at the bottom of this README), you should check out [gridfs-locking-stream](https://www.npmjs.org/package/gridfs-locking-stream). It is basically gridfs-stream + gridfs-locks.
 
-## Why?
-
-I know what you're thinking:
--   why does there need to be yet another locking library for node?
--   why not do this using [Redis](http://redis.io/), or better yet use one of the [existing Redis solutions](https://github.com/search?q=redis+locks&search_target=global)?
--   wait, safe concurrent access [isn't already baked into MongoDB GridFS](https://jira.mongodb.org/browse/NODE-157)?
-
-I'll answer these in reverse order... GridFS is MongoDB's file store technology; really it's just a bunch of "data model" conventions making it possible to store binary blobs of arbitrarily large non-JSON data in MongoDB collections. And it's totally useful.
-
-However, the GridFS data model says nothing about how to safely synchronize attempted concurrent read/write access to stored files. This is a problem because GridFS uses two separate collections to store file metadata and data chunks, respectively. And since [MongoDB has no native support for atomic multi-operation transactions](http://docs.mongodb.org/manual/tutorial/isolate-sequence-of-operations/), this turns out to be a critical omission for almost any real-world use of GridFS.
-
-The official node.js native mongo driver's [GridStore](https://github.com/mongodb/node-mongodb-native/blob/master/docs/gridfs.md) library is only "safe" (won't throw errors and/or corrupt GridFS data files) under two possible scenarios:
-
-1.   Once created, files are strictly read-only. After the initial write, they can never be changed or deleted.
-2.   An application **never** attempts to access a file when any kind of write or delete is also in progress.
-
-Neither of these constraints is acceptable for most real applications likely to be built with node.js using MongoDB. The solution is an efficient and robust locking mechanism to enforce condition #2 above by properly synchronizing read/write accesses. That is what this package provides.
-
-[Redis](http://redis.io/) is an amazing tool and this task could be certainly be done using Redis, but in this case we are already using MongoDB and it also has the capability to get the job done, so adding an unnecessary dependency on another server technology is undesirable.
-
-I tailored this library to use MongoDB and mirror the GridFS data model in the hopes that it may inspire the MongoDB team to add official concurrency features to a future version of the GridFS specification. In the meantime, this library will hopefully suffice in making GridFS generally useful for real world applications. I welcome all feedback.
+## What's new in v1.0.0
+Following the [semantic versioning](http://semver.org/) spec, version 1.0.0 contains a few breaking changes from the prototype 0.0.x of `gridfs-locks`. The main difference is that v1.0.0 Lock and LockCollection objects are now [event-emitters](http://nodejs.org/api/events.html). There are three primary impacts of these changes:
+1.    Async callbacks have been eliminated from API functions and replaced by events
+2.    A much richer set of async events (eg lock expirations) can now be observed and handled in a much more intuitive way
+3.    Locks for removed files can be also be removed so they don't fill up the lock collection
 
 ### Installation
 
@@ -51,42 +35,60 @@ db.open(function(err, db) {
   // Setup GridStore, etc.
 
   // Create a lock collection alongside the GridFS collections
-  LockCollection.create(db, 'fs', {}, function (err, lockColl) {
+  var lockColl = LockCollection(db, { root: 'fs', timeOut: 60, pollingInterval: 5, lockExpiration: 30 });
+
+  // Error events throw if not handled
+  lockColl.on('error', function (err) {
+    // Handle error
+    });
+
+  // 'ready' event when the collection is ready to use
+  lockColl.on('ready', function () {
 
     var ID = something;  // ID is the unique _id of a GridFS file, or whatever...
 
     // Create a lock object for ID
-    var lock = new Lock(ID, lockColl, {});
+    var lock = Lock(ID, lockColl, {}); // Options can override collection settings
 
     // Request a write lock
-    lock.obtainWriteLock(function(err, res) {
-      if (err || res == null) {
-        // Error or didn't get the lock...
-      }
+    lock.obtainWriteLock()
+
+    // Event emitteed if/when lock obtained
+    lock.on('locked', function(ld) {
 
       // Write to a gridFS file, do generally unsafe things
 
       // Don't forget!
-      lock.releaseLock(function (err, res) {});
+      lock.releaseLock();
 
     });
 
-    // Another lock on same resource ID
+    // Only emitted if timeOut option is != 0
+    lock.on('timed-out', function() {
+        // Didn't get the lock
+    });
+
+    // Error events throw if not handled
+    lock.on('error', function(err) {
+        // Handle Errors on the lock
+    });
+
+    // Another lock on same resource ID, use of 'new' is optional
     var lock2 = new Lock(ID, lockColl, {});
 
-    // Request a read lock
-    lock2.obtainReadLock(function(err, res) {
-      if (err || res == null) {
-        // Error or didn't get the lock...
-      }
+    // Request a read lock. Note calls can be chained...
+    lock2.obtainReadLock().on('locked', function(ld) {
 
       // Read from a GridFS file, safe in the knowledge that some
       // concurrent writer isn't going to make you crash...
 
       // Don't forget!
-      lock2.releaseLock(function (err, res) {});
+      lock2.releaseLock();
 
     });
+
+    // Add error and timed-out event handlers for lock2
+
   });
 });
 ```
@@ -101,26 +103,39 @@ As with any locking scheme, care must be taken to avoid creating [deadlocks](htt
 
 ## API
 
-### LockCollection.create()
+### LockCollection(db, options)
 
-Create a new lock collection. **Note**: Do not use `new LockCollection()` because collection creation needs an async callback.
+Create a new lock collection.
 
 ```js
-LockCollection.create(
+// using 'new' is optional
+
+var lockColl = new LockCollection(
   db,      // Must be an open mongodb connection object
-  'fs',    // Root name for the collection. Will become "fs.locks"
-  {                       // Options: All can be overridden per lock.
+  {                       // Options: All except 'root' can be overridden per lock.
+    root: 'fs',           // root name for the collection. Will become "fs.locks"
     lockExpiration: 300,  // seconds until a lock expires in the database  Default: Never expire
     timeOut: 30,          // seconds to poll when obtaining a lock that is not available.  Default: Do not poll
     pollingInterval: 5,   // seconds between successive attempts to acquire a lock while waiting  Default: 5 sec
     metaData: null        // metadata to store in the lock documents, useful for debugging  Default: null
     w: 1                  // mongodb write-concern  Default: 1
-  },
-  function (err, lockColl) {  // Required callback
-    // err:       any database errors or problems with parameters
-    // lockColl:  a LockCollection object if successful
-  }
-);
+  });
+
+// Emits events:
+
+// event: 'ready' - emitted when the collection is ready to use
+
+lockColl.on('ready', function () {
+  // Use collection to create/use locks, etc.
+});
+
+// event: 'error' - emitted in the case of a database or other unrecoverable error. 'ready' will not be emitted
+// No listener for 'error' events will result in throws in case of errors (node.js default behavior)
+
+lockColl.on('error', function (err) {
+  // Handle error
+});
+
 ```
 
 ### Lock()
@@ -128,6 +143,9 @@ LockCollection.create(
 Create a new Lock object. Lock objects may be reused, but are tied to a single Id for their lifetime.
 
 ```js
+
+// using 'new' is optional
+
 lock = new Lock(
   Id,         // Unique identifier for resource being locked. Type must be compatible with mongodb `_id`
   lockColl,   // A valid LockCollection object
@@ -139,6 +157,59 @@ lock = new Lock(
   }
 );
 
+// Emits events:
+
+// event: 'error' - emitted in the case of a database or other unrecoverable error.
+// No listener for 'error' events will result in throws in case of errors (node.js default behavior)
+
+lock.on('error', function (err) {
+  // Handle error
+});
+
+// event: 'locked' - A lock has been obtained. Supplies the current lock document
+// see obtainReadLock() and obtainWriteLock() methods below
+
+lock.on('locked', function (ld) { // provides current lock document
+  // Use lock...
+});
+
+// event: 'timed-out' - A timeout has occurred while waiting to obtain an unavailable lock
+// This event only occurs when timeOut != 0
+// see obtainReadLock() and obtainWriteLock() methods below
+
+lock.on('timed-out', function () {
+  // Handle timeout...
+});
+
+// event: 'released' - A held lock was successfully released
+// see releaseLock() method below
+
+lock.on('released', function (ld) {
+  // do something else
+});
+
+// event: 'removed' - A held write lock was successfully removed from the lock collection
+// see removeLock() method below
+
+lock.on('removed', function (ld) {
+  // do something else
+});
+
+// The following two events only occur when lockExpiration != 0
+
+// event: 'expires-soon' - warning ~90% of the lifetime of this lock has passed.
+// Either release or renew the lock, see releaseLock() and renewLock() methods below
+
+lock.on('expires-soon', function (ld) { // provides current lock document
+  // release or renew...
+});
+
+// event: 'expired' - the lifetime of this lock has passed.
+// It is no longer safe to use the underlying resource without obtaining a new lock
+
+lock.on('expired', function (ld) {
+  // handle expiration
+});
 ```
 
 ### lock.obtainReadLock()
@@ -146,10 +217,13 @@ lock = new Lock(
 Attempt to obtain a non-exclusive lock on the resource. There can be multiple simultaneous readers of a resource.
 
 ```js
-lock.obtainReadLock(
-  function (err, l) {  // Required callback
-    // err:   any database error
-    // l:     the lock document obtained. If null, the attempt failed or timed out
+lock.obtainReadLock().on('locked',
+  function (ld) {
+    // Use lock
+  }
+).on('timed-out',
+  function () {
+    // Didn't get lock
   }
 );
 ```
@@ -159,10 +233,13 @@ lock.obtainReadLock(
 Attempt to obtain an exclusive lock on the resource. When a write lock is obtained, there can be no other readers or writers.
 
 ```js
-lock.obtainWriteLock(
-  function (err, l) {  // Required callback
-    // err:   any database error
-    // l:     the lock document obtained. If null, the attempt failed or timed out
+lock.obtainWriteLock().on('locked',
+  function (ld) {
+    // Use lock
+  }
+).on('timed-out',
+  function () {
+    // Didn't get lock
   }
 );
 ```
@@ -172,23 +249,36 @@ lock.obtainWriteLock(
 Release a held lock, either read or write.
 
 ```js
-lock.releaseLock(
-  function (err, l) {  // This callback is optional, will throw on error if omitted
-    // err:   any database errors or lock document not found
-    // l:     the freed lock document
+lock.releaseLock().on('released',
+  function (ld) {
+    // No need to listen for this for no reason
   }
 );
 ```
 
+### lock.removeLock()
+
+Remove a held write lock from the lock collection. Appropriate to use when the write lock is obtained to delete a resource.
+
+```js
+lock.removeLock().on('removed',
+  function (ld) {
+    // No need to listen for this for no reason
+  }
+);
+```
 ### lock.renewLock()
 
 Need more time? Reset the lock expiration time to `lockExpiration` seconds from now.
 
 ```js
-lock.renewLock(
-  function (err, l) {  // Required callback
-    // err:   any database error or lock document not found
-    // l:     the lock document obtained.
+lock.on('expires-soon',
+  function() {
+    lock.renewLock().on('renewed',
+      function (ld) {
+        // Keep using lock
+      }
+    );
   }
 );
 ```
@@ -207,5 +297,25 @@ lock.renewLock(
 }
 ```
 
+# Why?
 
+I know what you're thinking:
+-   why does there need to be yet another locking library for node?
+-   why not do this using [Redis](http://redis.io/), or better yet use one of the [existing Redis solutions](https://github.com/search?q=redis+locks&search_target=global)?
+-   wait, safe concurrent access [isn't already baked into MongoDB GridFS](https://jira.mongodb.org/browse/NODE-157)?
+
+I'll answer these in reverse order... GridFS is MongoDB's file store technology; really it's just a bunch of "data model" conventions making it possible to store binary blobs of arbitrarily large non-JSON data in MongoDB collections. And it's totally useful.
+
+However, the GridFS data model says nothing about how to safely synchronize attempted concurrent read/write access to stored files. This is a problem because GridFS uses two separate collections to store file metadata and data chunks, respectively. And since [MongoDB has no native support for atomic multi-operation transactions](http://docs.mongodb.org/manual/tutorial/isolate-sequence-of-operations/), this turns out to be a critical omission for almost any real-world use of GridFS.
+
+The official node.js native mongo driver's [GridStore](https://github.com/mongodb/node-mongodb-native/blob/master/docs/gridfs.md) library is only "safe" (won't throw errors and/or corrupt GridFS data files) under two possible scenarios:
+
+1.   Once created, files are strictly read-only. After the initial write, they can never be changed or deleted.
+2.   An application **never** attempts to access a file when any kind of write or delete is also in progress.
+
+Neither of these constraints is acceptable for most real applications likely to be built with node.js using MongoDB. The solution is an efficient and robust locking mechanism to enforce condition #2 above by properly synchronizing read/write accesses. That is what this package provides.
+
+[Redis](http://redis.io/) is an amazing tool and this task could be certainly be done using Redis, but in this case we are already using MongoDB and it also has the capability to get the job done, so adding an unnecessary dependency on another server technology is undesirable.
+
+I tailored this library to use MongoDB and mirror the GridFS data model in the hopes that it may inspire the MongoDB team to add official concurrency features to a future version of the GridFS specification. In the meantime, this library will hopefully suffice in making GridFS generally useful for real world applications. I welcome all feedback.
 
