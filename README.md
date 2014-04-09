@@ -6,6 +6,7 @@ NOTE: if you use [gridfs-stream](https://www.npmjs.org/package/gridfs-stream) an
 
 ## What's new in v1.0.0
 Following the [semantic versioning](http://semver.org/) spec, version 1.0.0 contains a few breaking changes from the prototype 0.0.x of `gridfs-locks`. The main difference is that v1.0.0 Lock and LockCollection objects are now [event-emitters](http://nodejs.org/api/events.html). There are three primary impacts of these changes:
+
 1.    Async callbacks have been eliminated from API functions and replaced by events
 2.    A much richer set of async events (eg lock expirations) can now be observed and handled in a much more intuitive way
 3.    Locks for removed files can be also be removed so they don't fill up the lock collection
