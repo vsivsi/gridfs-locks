@@ -54,14 +54,13 @@ db.open(function(err, db) {
     // Request a write lock
     lock.obtainWriteLock()
 
-    // Event emitteed if/when lock obtained
+    // Event emitted when lock obtained
     lock.on('locked', function(ld) {
 
       // Write to a gridFS file, do generally unsafe things
 
       // Don't forget!
       lock.releaseLock();
-
     });
 
     // Another lock on same resource ID, use of 'new' is optional
@@ -75,7 +74,6 @@ db.open(function(err, db) {
 
       // Don't forget!
       lock2.releaseLock();
-
     });
 
     // Add error and timed-out event handlers for lock and lock2
@@ -186,13 +184,20 @@ lock.on('removed', function (ld) {
   // do something else
 });
 
-// The following two events only occur when lockExpiration != 0
+// The following three events only occur when lockExpiration != 0
 
 // event: 'expires-soon' - warning ~90% of the lifetime of this lock has passed.
 // Either release or renew the lock, see releaseLock() and renewLock() methods below
 
 lock.on('expires-soon', function (ld) { // provides current lock document
   // release or renew...
+});
+
+// event: 'renewed' - A held lock was successfully renewed for another lockExpiration seconds
+// see renewLock() method below
+
+lock.on('renewed', function (ld) {
+  // continue using lock
 });
 
 // event: 'expired' - the lifetime of this lock has passed.
