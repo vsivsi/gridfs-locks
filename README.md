@@ -72,8 +72,17 @@ db.open(function(err, db) {
       // Read from a GridFS file, safe in the knowledge that some
       // concurrent writer isn't going to make you crash...
 
-      // Don't forget!
-      lock2.releaseLock();
+      // Release the lock, and then reuse it to remove the resource
+      lock2.releaseLock().on('released', function () {
+          lock2.obtainWriteLock().on('locked', function () {
+
+              // Remove the file/resource/whatever
+
+              lock2.removeLock(); // Remove the lock from the collection
+            }
+          );
+        }
+      );
     });
 
     // Add error and timed-out event handlers for lock and lock2
