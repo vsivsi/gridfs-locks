@@ -815,6 +815,32 @@ describe 'gridfs-locks', () ->
               assert ld?
               done()
 
+    it "shouldn't allow a later read lock to shorten the expiration of an already held read lock", (done) ->
+      lock1.lockExpiration = 5000
+      lock1.obtainReadLock().on 'locked', (ld) ->
+        assert ld?
+        lock2.obtainReadLock().on 'locked', (ld2) ->
+          assert ld2?
+          assert.equal ld2.expires.getTime(), ld.expires.getTime()
+          lock1.releaseLock().on 'released', (ld) ->
+            assert ld?
+            lock2.releaseLock().on 'released', (ld) ->
+              assert ld?
+              done()
+
+    it "should allow a later read lock to lengthen the expiration of an already held read lock", (done) ->
+      lock2.lockExpiration = 5000
+      lock1.obtainReadLock().on 'locked', (ld) ->
+        assert ld?
+        lock2.obtainReadLock().on 'locked', (ld2) ->
+          assert ld2?
+          assert ld2.expires.getTime() > ld.expires.getTime()
+          lock1.releaseLock().on 'released', (ld) ->
+            assert ld?
+            lock2.releaseLock().on 'released', (ld) ->
+              assert ld?
+              done()
+
   describe 'testing under load', () ->
 
     this.timeout 300000
@@ -867,14 +893,14 @@ describe 'gridfs-locks', () ->
                 # console.log "WUL", released, ld.write_lock, ld.write_req, ld.read_locks
                 done() if released is numLocks*writeLockFraction
 
-    it 'should accomodate hundreds of simultaneous readers/writers on a resource', (done) ->
+    it.only 'should accomodate hundreds of simultaneous readers/writers on a resource', (done) ->
       released = 0
       currentValue = 0
       for l, x in locksArray
         myTimeout Math.floor(10000*Math.random()), l, (l) ->
           if Math.random() <= writeLockFraction
             l.obtainWriteLock().on 'locked', (ld) ->
-              # console.log "WL", released, ld.write_lock, ld.write_req, ld.read_locks
+              console.log "WL", released, ld.write_lock, ld.write_req, ld.read_locks
               assert ld?
               assert.equal Math.floor(currentValue), currentValue
               currentValue += 0.5
@@ -883,18 +909,18 @@ describe 'gridfs-locks', () ->
                 l.releaseLock().on 'released', (ld) ->
                   assert ld?
                   released++
-                  # console.log "WUL", released, ld.write_lock, ld.write_req, ld.read_locks
+                  console.log "WUL", released, ld.write_lock, ld.write_req, ld.read_locks
                   done() if released is numLocks
           else
             l.obtainReadLock().on 'locked', (ld) ->
-              # console.log "RL", released, ld.write_lock, ld.write_req, ld.read_locks
+              console.log "RL", released, ld.write_lock, ld.write_req, ld.read_locks
               assert ld?
               assert.equal Math.floor(currentValue), currentValue
               myTimeout 5, l, (l) ->
                 l.releaseLock().on 'released', (ld) ->
                   assert ld?
                   released++
-                  # console.log "RUL", released, ld.write_lock, ld.write_req, ld.read_locks
+                  console.log "RUL", released, ld.write_lock, ld.write_req, ld.read_locks
                   done() if released is numLocks
 
   describe 'testing with timeouts and expiration under load', () ->
@@ -970,7 +996,7 @@ describe 'gridfs-locks', () ->
               # console.log "RTO", released+timedOut+expired, released, timedOut, expired
               done() if released+timedOut+expired is numLocks
 
-  after (done) ->
-    db.dropDatabase () ->
-      db.close true, done
+  # after (done) ->
+  #   db.dropDatabase () ->
+  #     db.close true, done
 

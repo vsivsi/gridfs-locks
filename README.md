@@ -5,7 +5,7 @@
 NOTE: if you use [gridfs-stream](https://www.npmjs.org/package/gridfs-stream) and need the locking capabilities of this package (and you probably do... see the "Why?" section at the bottom of this README), you should check out [gridfs-locking-stream](https://www.npmjs.org/package/gridfs-locking-stream). It is basically gridfs-stream + gridfs-locks.
 
 ## What's new in v1.0.0
-Following the [semantic versioning](http://semver.org/) spec, version 1.0.0 contains a few breaking changes from the prototype 0.0.x of `gridfs-locks`. The main difference is that v1.0.0 Lock and LockCollection objects are now [event-emitters](http://nodejs.org/api/events.html). There are three primary impacts of these changes:
+Following the [semantic versioning](http://semver.org/) convention, version 1.0.0 contains a few breaking changes from the prototype v0.0.x of `gridfs-locks`. The main difference is that v1.0.0 Lock and LockCollection objects are now [event-emitters](http://nodejs.org/api/events.html). There are three primary impacts of these changes:
 
 1.    All async callbacks have been eliminated from the API method parameter lists and replaced with events
 2.    A much richer set of async events (eg. lock expirations) can now be observed and handled in a more intuitive way
@@ -97,7 +97,7 @@ GridFS itself creates [two collections](http://docs.mongodb.org/manual/reference
 
 It uses a [multiple-reader/exclusive-writer model for locking, with a fair write-request scheme](https://en.wikipedia.org/wiki/Readers-writer_lock) to prevent blocking of writes by a continuous stream of readers. There is optional support for lock expiration, attaching metadata to locks (for debugging distributed applications), and waiting to obtain locks with timeout. When waiting for locks, the polling interval is also configurable. All of the above options can be configured globally, or on a per-lock basis. As a bonus, `gridfs-locks` also tracks the number of successful read and write locks granted for each resource.
 
-As with any locking scheme, care must be taken to avoid creating [deadlocks](https://en.wikipedia.org/wiki/Deadlocks), and the built-in lock expiration pattern may be helpful in doing so. Note that the default configuration is that locks never expire, and attempts to obtain unavailable locks emit the `'timed-out'` event immediately without waiting for a lock to become available. These behaviors may be changed using the `lockExpiration`, `timeOut` and `pollingInterval` options.
+As with any locking scheme, care must be taken to avoid creating [deadlocks](https://en.wikipedia.org/wiki/Deadlocks), and the built-in lock expiration pattern may be helpful in doing so. The default configuration is that locks never expire, and attempts to obtain unavailable locks emit the `'timed-out'` event immediately without waiting for a lock to become available. These behaviors may be changed using the `lockExpiration`, `timeOut` and `pollingInterval` options.
 
 ## API
 

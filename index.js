@@ -254,7 +254,7 @@ var releaseReadLock = function (self) {
           self.collection.findOne({files_id: self.fileId, read_locks: {$gt: 0}}, function (err, doc) {
             if (err) { return emitError(self, err); }
             if (doc == null) {
-              return emitError(self, "Lock.releaseLock Valid read Lock document not found in collection.");
+              return emitError(self, "Lock.releaseLock Valid read Lock document not found in collection. " + JSON.stringify(self.heldLock));
             } else {
               self.releaseLock();
             }
@@ -436,10 +436,23 @@ var emitExpiresSoonEvent = function () {
 // Private function that implements polling for locks in the database
 
 var timeoutReadLockQuery = function (self, options) {
+
+  function gotLock(doc) {
+    self.heldLock = doc;
+    if (self.lockExpiration) {
+      self.expiresSoonTimeout = setTimeout(emitExpiresSoonEvent.bind(self),
+                                           0.9*(self.lockExpireTime - new Date().getTime() - self.pollingInterval));
+      self.expiredTimeout = setTimeout(emitExpiredEvent.bind(self),
+                                       (self.lockExpireTime - new Date().getTime() - self.pollingInterval));
+    }
+    return self.emit('locked', doc);
+  };
+
   options = options || {};
   self.update.$set.expires = self.lockExpireTime = new Date(new Date().getTime() + (self.lockExpiration || never));
   // Read locks can break writelocks with write_req after more than one polling cycle
-  self.query.$or[0].expires.$lt = new Date(new Date() - 2*self.pollingInterval);
+  self.query.$or[0].expires.$lt = new Date(new Date().getTime() - 2*self.pollingInterval);
+  self.query.$or[1].expires = { $lte: self.lockExpireTime };
   self.collection.findAndModify(self.query,
     [],
     self.update,
@@ -447,17 +460,28 @@ var timeoutReadLockQuery = function (self, options) {
     function (err, doc) {
       if (err) { return emitError(self, err); }
       if (!doc) {
-        if(new Date() - self.timeCreated >= self.timeOut) {
-          return self.emit('timed-out');
-        }
-        return setTimeout(timeoutReadLockQuery, self.pollingInterval, self, options);
+        // Try again without trying to update the expire time
+        console.log("Second try...");
+        delete self.query.$or[1].expires;
+        delete self.update.$set.expires;
+        self.collection.findAndModify(self.query,
+          [],
+          self.update,
+          {w: self.lockCollection.writeConcern, new: true},
+          function (err, doc) {
+            if (err) { return emitError(self, err); }
+            if (!doc) {
+              if(new Date().getTime() - self.timeCreated >= self.timeOut) {
+                return self.emit('timed-out');
+              }
+              return setTimeout(timeoutReadLockQuery, self.pollingInterval, self, options);
+            } else {
+              return gotLock(doc);
+            }
+          }
+        );
       } else {
-        self.heldLock = doc;
-        if (self.lockExpiration) {
-          self.expiresSoonTimeout = setTimeout(emitExpiresSoonEvent.bind(self, ''), 0.9*(self.lockExpireTime - new Date() - self.pollingInterval));
-          self.expiredTimeout = setTimeout(emitExpiredEvent.bind(self, ''), (self.lockExpireTime - new Date() - self.pollingInterval));
-        }
-        return self.emit('locked', doc);
+        return gotLock(doc);
       }
     }
   );
@@ -478,12 +502,14 @@ var timeoutWriteLockQuery = function (self, options) {
       if (doc) {
         self.heldLock = doc;
         if (self.lockExpiration) {
-          self.expiresSoonTimeout = setTimeout(emitExpiresSoonEvent.bind(self, ''), 0.9*(self.lockExpireTime - new Date() - self.pollingInterval));
-          self.expiredTimeout = setTimeout(emitExpiredEvent.bind(self, ''), (self.lockExpireTime - new Date() - self.pollingInterval));
+          self.expiresSoonTimeout = setTimeout(emitExpiresSoonEvent.bind(self),
+                                               0.9*(self.lockExpireTime - new Date().getTime() - self.pollingInterval));
+          self.expiredTimeout = setTimeout(emitExpiredEvent.bind(self),
+                                           (self.lockExpireTime - new Date().getTime() - self.pollingInterval));
         }
         return self.emit('locked', doc);
       }
-      if (new Date() - self.timeCreated >= self.timeOut) {
+      if (new Date().getTime() - self.timeCreated >= self.timeOut) {
         // Clear the write_req flag, since this obtainWriteLock has timed out
         self.collection.findAndModify({files_id: self.fileId, write_req: true},
           [],
