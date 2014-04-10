@@ -1,3 +1,7 @@
+### 1.0.1
+
+- Fixed issue when multiple simultaneous readers with different lockExpiration values could cause a reader lock to expire prematurely
+
 ### 1.0.0
 
 - gridfs-locks now exclusively uses an event-emitter interface. See Readme for more information.

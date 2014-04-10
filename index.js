@@ -153,7 +153,7 @@ Lock.prototype.removeLock = function () {
       if (doc == null) {
         return emitError(self, "Lock.removeLock Lock document not found in collection.");
       }
-      doc.expires = self.timeCreated
+      doc.expires = new Date(never);
       doc.write_lock = false
       self.emit('removed', doc);
     });
@@ -202,7 +202,7 @@ Lock.prototype.releaseLock = function () {
 var releaseWriteLock = function (self) {
 
   var query = {files_id: self.fileId, write_lock: true},
-      update = {$set: {write_lock: false, expires: self.timeCreated, meta: null}};
+      update = {$set: {write_lock: false, expires: new Date(never), meta: null}};
 
   self.collection.findAndModify(query, [], update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
     if (err) { return emitError(self, err); }
@@ -236,7 +236,7 @@ var releaseReadLock = function (self) {
     } else {
 
       query = {files_id: self.fileId, read_locks: 1};
-      update = {$set: {read_locks: 0, expires: self.timeCreated, meta: null}};
+      update = {$set: {read_locks: 0, expires: new Date(never), meta: null}};
 
       // Case for read_locks == 1
       self.collection.findAndModify(query, [], update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
@@ -333,10 +333,6 @@ Lock.prototype.obtainReadLock = function() {
   self.timeCreated = new Date();
   initializeLockDoc(self, function (err, doc) {
     if (err) { return emitError(self, err); }
-    self.query = {files_id: self.fileId,
-                  $or: [{expires: {$lt: new Date(new Date() - 2000*self.lockCollection.pollingInterval)}},
-                        {write_lock: false, write_req: false}]};
-    self.update = {$inc: {read_locks: 1, reads: 1}, $set: {write_lock: false, write_req: false, meta: self.metaData}};
     self.lockType = 'r';
     self.expired = false;
     timeoutReadLockQuery(self);
@@ -381,10 +377,6 @@ Lock.prototype.obtainWriteLock = function(testingOptions) {
   self.timeCreated = new Date();
   initializeLockDoc(self, function (err, doc) {
     if (err) { return emitError(self, err); }
-    self.query = {files_id: self.fileId,
-                  $or: [{expires: {$lt: new Date()}, write_req: true},
-                        {write_lock: false, read_locks: 0}]};
-    self.update = {$set: {write_lock: true, write_req: false, read_locks: 0, meta: self.metaData}, $inc:{writes: 1}};
     self.expired = false;
     self.lockType = 'w';
     timeoutWriteLockQuery(self, testingOptions);
@@ -449,10 +441,15 @@ var timeoutReadLockQuery = function (self, options) {
   };
 
   options = options || {};
-  self.update.$set.expires = self.lockExpireTime = new Date(new Date().getTime() + (self.lockExpiration || never));
-  // Read locks can break writelocks with write_req after more than one polling cycle
-  self.query.$or[0].expires.$lt = new Date(new Date().getTime() - 2*self.pollingInterval);
-  self.query.$or[1].expires = { $lte: self.lockExpireTime };
+
+  // Read locks can break write locks with write_req after more than one polling cycle
+  self.lockExpireTime = new Date(new Date().getTime() + (self.lockExpiration || never));
+  self.query = {files_id: self.fileId,
+                $or: [{write_lock: false, write_req: false, read_locks: 0},
+                      {write_lock: false, write_req: false, expires: {$lte: self.lockExpireTime}},
+                      {expires: {$lt: new Date(new Date() - 2*self.pollingInterval)}}]};
+  self.update = {$inc: {read_locks: 1, reads: 1}, $set: {write_lock: false, write_req: false, expires: self.lockExpireTime, meta: self.metaData}};
+
   self.collection.findAndModify(self.query,
     [],
     self.update,
@@ -461,9 +458,11 @@ var timeoutReadLockQuery = function (self, options) {
       if (err) { return emitError(self, err); }
       if (!doc) {
         // Try again without trying to update the expire time
-        console.log("Second try...");
-        delete self.query.$or[1].expires;
-        delete self.update.$set.expires;
+        // console.log("Second try...");
+        self.lockExpireTime = new Date(new Date().getTime() + (self.lockExpiration || never));
+        self.query = {files_id: self.fileId, write_lock: false, write_req: false, expires: { $gt: self.lockExpireTime }};
+        self.update = {$inc: {read_locks: 1, reads: 1}, $set: {meta: self.metaData}};
+
         self.collection.findAndModify(self.query,
           [],
           self.update,
@@ -491,8 +490,13 @@ var timeoutReadLockQuery = function (self, options) {
 
 var timeoutWriteLockQuery = function (self, options) {
   options = options || {};
-  self.update.$set.expires = self.lockExpireTime = new Date(new Date().getTime() + (self.lockExpiration || never));
-  self.query.$or[0].expires.$lt = new Date();
+
+  self.query = {files_id: self.fileId,
+                $or: [{expires: {$lt: new Date()}, write_req: true},
+                      {write_lock: false, read_locks: 0}]};
+  self.lockExpireTime = new Date(new Date().getTime() + (self.lockExpiration || never));
+  self.update = {$set: {write_lock: true, write_req: false, read_locks: 0, expires: self.lockExpireTime, meta: self.metaData}, $inc:{writes: 1}};
+
   self.collection.findAndModify(self.query,
     [],
     self.update,

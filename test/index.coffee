@@ -274,7 +274,7 @@ describe 'gridfs-locks', () ->
             assert ld?
             assert id.equals ld.files_id
             assert ld.expires instanceof Date
-            assert ld.expires.getTime() is lock1.timeCreated.getTime()
+            assert ld.expires > lock1.timeCreated
             assert.equal ld.read_locks, 0
             assert.equal ld.write_lock, false
             assert.equal ld.write_req, false
@@ -301,7 +301,7 @@ describe 'gridfs-locks', () ->
             assert ld?
             assert id.equals ld.files_id
             assert ld.expires instanceof Date
-            assert ld.expires.getTime() is lock2.timeCreated.getTime()
+            assert ld.expires > lock2.timeCreated
             assert.equal ld.read_locks, 0
             assert.equal ld.write_lock, false
             assert.equal ld.write_req, false
@@ -893,15 +893,16 @@ describe 'gridfs-locks', () ->
                 # console.log "WUL", released, ld.write_lock, ld.write_req, ld.read_locks
                 done() if released is numLocks*writeLockFraction
 
-    it.only 'should accomodate hundreds of simultaneous readers/writers on a resource', (done) ->
+    it 'should accomodate hundreds of simultaneous readers/writers on a resource', (done) ->
       released = 0
       currentValue = 0
       for l, x in locksArray
         myTimeout Math.floor(10000*Math.random()), l, (l) ->
           if Math.random() <= writeLockFraction
             l.obtainWriteLock().on 'locked', (ld) ->
-              console.log "WL", released, ld.write_lock, ld.write_req, ld.read_locks
+              # console.log "WL", new Date().toJSON(), released, JSON.stringify(ld), JSON.stringify(l.query), JSON.stringify(l.update)
               assert ld?
+              assert ld.expires.getTime() > new Date().getTime() + 100000
               assert.equal Math.floor(currentValue), currentValue
               currentValue += 0.5
               myTimeout 5, l, (l) ->
@@ -909,18 +910,19 @@ describe 'gridfs-locks', () ->
                 l.releaseLock().on 'released', (ld) ->
                   assert ld?
                   released++
-                  console.log "WUL", released, ld.write_lock, ld.write_req, ld.read_locks
+                  # console.log "WUL", new Date().toJSON(), released, JSON.stringify(ld)
                   done() if released is numLocks
           else
             l.obtainReadLock().on 'locked', (ld) ->
-              console.log "RL", released, ld.write_lock, ld.write_req, ld.read_locks
+              # console.log "RL", new Date().toJSON(), released, JSON.stringify(ld), JSON.stringify(l.query), JSON.stringify(l.update)
               assert ld?
+              assert ld.expires.getTime() > new Date().getTime() + 100000
               assert.equal Math.floor(currentValue), currentValue
               myTimeout 5, l, (l) ->
                 l.releaseLock().on 'released', (ld) ->
                   assert ld?
                   released++
-                  console.log "RUL", released, ld.write_lock, ld.write_req, ld.read_locks
+                  # console.log "RUL", new Date().toJSON(), released, JSON.stringify(ld)
                   done() if released is numLocks
 
   describe 'testing with timeouts and expiration under load', () ->
@@ -996,7 +998,7 @@ describe 'gridfs-locks', () ->
               # console.log "RTO", released+timedOut+expired, released, timedOut, expired
               done() if released+timedOut+expired is numLocks
 
-  # after (done) ->
-  #   db.dropDatabase () ->
-  #     db.close true, done
+  after (done) ->
+    db.dropDatabase () ->
+      db.close true, done
 
