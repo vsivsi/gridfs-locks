@@ -1,3 +1,11 @@
+### 1.0.0
+
+- gridfs-locks now exclusively uses an event-emitter interface. See Readme for more information.
+
+### 0.0.6
+
+- Documentation fixes
+- Removed console.log()
 
 ### 0.0.5
 
