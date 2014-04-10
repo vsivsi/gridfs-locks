@@ -111,22 +111,16 @@ Create a new lock collection.
 var lockColl = new LockCollection(
   db,      // Must be an open mongodb connection object
   {                       // Options: All except 'root' can be overridden per lock.
-
     root: 'fs',           // root name for the collection. Cannot be changed.
                           // Default: 'fs'
-
     lockExpiration: 300,  // seconds until a lock expires in the database.
                           // Default: 0 (Never expire)
-
     timeOut: 30,          // seconds to poll when obtaining a lock that is not available.
                           // Default: 0 (Do not poll)
-
     pollingInterval: 5,   // seconds between attempts to acquire a lock while waiting.
                           // Default: 5 sec
-
     metaData: null        // metadata to store in the lock documents, useful for debugging.
                           // Default: null
-
     w: 1                  // mongodb write-concern  Default: 1
   });
 
