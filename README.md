@@ -46,10 +46,10 @@ db.open(function(err, db) {
   // 'ready' event when the collection is ready to use
   lockColl.on('ready', function () {
 
-    var ID = something;  // ID is the unique _id of a GridFS file, or whatever...
+    var ID = something;  // ID is a unique _id (eg., a GridFS file _id)
 
     // Create a lock object for ID
-    var lock = Lock(ID, lockColl, {}); // Options can override collection settings
+    var lock = Lock(ID, lockColl, {}); // can override collection settings
 
     // Request a write lock
     lock.obtainWriteLock()
@@ -110,16 +110,16 @@ Create a new lock collection.
 
 var lockColl = new LockCollection(
   db,      // Must be an open mongodb connection object
-  {                       // Options: All except 'root' can be overridden per lock.
-    root: 'fs',           // root name for the collection. Cannot be changed.
+  {                       // Options: All except 'root' can be overridden
+    root: 'fs',           // root name for the collection.
                           // Default: 'fs'
-    lockExpiration: 300,  // seconds until a lock expires in the database.
+    lockExpiration: 300,  // secs until a lock expires in the database
                           // Default: 0 (Never expire)
-    timeOut: 30,          // seconds to poll when obtaining a lock that is not available.
+    timeOut: 30,          // secs to poll for an unavailable lock
                           // Default: 0 (Do not poll)
-    pollingInterval: 5,   // seconds between attempts to acquire a lock while waiting.
+    pollingInterval: 5,   // secs between attempts to acquire a lock
                           // Default: 5 sec
-    metaData: null        // metadata to store in the lock documents, useful for debugging.
+    metaData: null        // any metadata to store in the lock documents
                           // Default: null
     w: 1                  // mongodb write-concern  Default: 1
   });
@@ -132,8 +132,9 @@ lockColl.on('ready', function () {
   // Use collection to create/use locks, etc.
 });
 
-// event: 'error' - emitted in the case of a database or other unrecoverable error. 'ready' will not be emitted
-// No listener for 'error' events will result in throws in case of errors (node.js default behavior)
+// event: 'error' - emitted in the case of a database or other unrecoverable
+// error. 'ready' will not be emitted.  No listener for 'error' events will
+// result in throws in case of errors (node.js default behavior)
 
 lockColl.on('error', function (err) {
   // Handle error
@@ -155,37 +156,37 @@ lock = new Lock(
   lockColl,   // A valid LockCollection object
   {                       // Options:
 
-    lockExpiration: 300,  // seconds until a lock expires in the database.
+    lockExpiration: 300,  // secs until a lock expires in the database
                           // Default: 0 (Never expire)
-    timeOut: 30,          // seconds to poll when obtaining a lock that is not available.
+    timeOut: 30,          // secs to poll for an unavailable lock
                           // Default: 0 (Do not poll)
-    pollingInterval: 5,   // seconds between attempts to acquire a lock while waiting.
+    pollingInterval: 5,   // secs between attempts to acquire a lock
                           // Default: 5 sec
-    metaData: null        // metadata to store in the lock document, useful for debugging.
+    metaData: null        // any metadata to store in the lock document
                           // Default: null
   }
 );
 
 // Emits events:
 
-// event: 'error' - emitted in the case of a database or other unrecoverable error.
-// No listener for 'error' events will result in throws in case of errors,
-// which is the node.js default behavior.
+// event: 'error' - emitted in the case of a database or other unrecoverable
+// error. No listener for 'error' events will result in throws in case of
+// errors, which is the node.js default behavior.
 
 lock.on('error', function (err) {
   // Handle error
 });
 
-// event: 'locked' - A lock has been obtained. Supplies the current lock document
-// see obtainReadLock() and obtainWriteLock() methods below
+// event: 'locked' - A lock has been obtained. Supplies the current lock
+// document. See obtainReadLock() and obtainWriteLock() methods below
 
 lock.on('locked', function (ld) { // provides current lock document
   // Use locked resource...
 });
 
-// event: 'timed-out' - A timeout occurred while waiting to obtain an unavailable lock
-// This event only occurs when timeOut != 0
-// see obtainReadLock() and obtainWriteLock() methods below
+// event: 'timed-out' - A timeout occurred while waiting to obtain an
+// unavailable lock. This event only occurs when timeOut != 0
+// See obtainReadLock() and obtainWriteLock() methods below
 
 lock.on('timed-out', function () {
   // Handle timeout...
@@ -198,8 +199,8 @@ lock.on('released', function (ld) {
   // do something else
 });
 
-// event: 'removed' - A held write lock was successfully removed from the lock collection
-// see removeLock() method below
+// event: 'removed' - A held write lock was successfully removed from the
+// lock collection. See removeLock() method below
 
 lock.on('removed', function (ld) {
   // do something else
@@ -207,14 +208,15 @@ lock.on('removed', function (ld) {
 
 // The following three events only occur when lockExpiration != 0
 
-// event: 'expires-soon' - warning ~90% of the lifetime of this lock has passed.
-// Either release or renew the lock, see releaseLock() and renewLock() methods below
+// event: 'expires-soon' - warning ~90% of the lifetime of this lock has
+// passed. Either release or renew the lock.
+// See releaseLock() and renewLock() methods below
 
 lock.on('expires-soon', function (ld) { // provides current lock document
   // release or renew...
 });
 
-// event: 'renewed' - A held lock was successfully renewed for another lifetime
+// event: 'renewed' - A held lock was successfully renewed
 // see renewLock() method below
 
 lock.on('renewed', function (ld) {
@@ -222,7 +224,8 @@ lock.on('renewed', function (ld) {
 });
 
 // event: 'expired' - the lifetime of this lock has passed.
-// It is no longer safe to use the underlying resource without obtaining a new lock
+// It is no longer safe to use the underlying resource without obtaining
+// a new lock
 
 lock.on('expired', function (ld) {
   // handle expiration

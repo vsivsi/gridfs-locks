@@ -1,3 +1,7 @@
+### 1.0.2
+
+- Updated README.md code blocks to correct formatting glitches on npmjs.org
+
 ### 1.0.1
 
 - Fixed issue when multiple simultaneous readers with different lockExpiration values could cause a reader lock to expire prematurely
