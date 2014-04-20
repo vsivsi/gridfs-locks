@@ -1,3 +1,7 @@
+### 1.0.3
+
+- Fixed typos in README.md code snippets
+
 ### 1.0.2
 
 - Updated README.md code blocks to correct formatting glitches on npmjs.org

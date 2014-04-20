@@ -27,8 +27,8 @@ To run unit tests (requres mongodb server on `localhost:27017`):
 var Db = require('mongodb').Db;
 var Server = require('mongodb').Server;
 var db = new Db('test', new Server('127.0.0.1', 27017));
-var LockCollection = require('grid-locks').LockCollection
-var Lock = require('grid-locks').Lock
+var LockCollection = require('gridfs-locks').LockCollection
+var Lock = require('gridfs-locks').Lock
 
 // Open the database
 db.open(function(err, db) {
