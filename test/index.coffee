@@ -413,6 +413,7 @@ describe 'gridfs-locks', () ->
 
     describe 'renewLock', () ->
       lock1 = null
+      lock2 = null
       id = null
 
       before (done) ->
@@ -431,6 +432,17 @@ describe 'gridfs-locks', () ->
           assert expiresBefore <= ld.expires
           assert.equal ld.expires, lock1.heldLock.expires
           done()
+
+      it "shouldn't decrease the time to expire of a read lock when another lock holder already has a longer expiration", (done) ->
+        lock2 = Lock id, lockColl, { lockExpiration: 600 }
+        lock2.obtainReadLock().on 'locked', (ld) ->
+          assert ld?
+          expiresBefore = lock2.heldLock.expires
+          lock1.renewLock().on 'renewed', (ld) ->
+            assert.equal expiresBefore.getTime(), ld.expires.getTime()
+            assert.equal ld.expires.getTime(), lock1.heldLock.expires.getTime()
+            lock2.releaseLock().on 'released', (ld) ->
+              done()
 
       it "should fail to renew an unheld lock", (done) ->
         lock1.releaseLock().on 'released', (ld) ->
