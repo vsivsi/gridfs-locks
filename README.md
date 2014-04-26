@@ -4,8 +4,8 @@
 
 NOTE: if you use [gridfs-stream](https://www.npmjs.org/package/gridfs-stream) and need the locking capabilities of this package (and you probably do... see the "Why?" section at the bottom of this README), you should check out [gridfs-locking-stream](https://www.npmjs.org/package/gridfs-locking-stream). It is basically gridfs-stream + gridfs-locks.
 
-## What's new in v1.0.0
-Following the [semantic versioning](http://semver.org/) convention, version 1.0.0 contains a few breaking changes from the prototype v0.0.x of `gridfs-locks`. The main difference is that v1.0.0 Lock and LockCollection objects are now [event-emitters](http://nodejs.org/api/events.html). There are three primary impacts of these changes:
+## What's new in v1.x
+Following the [semantic versioning](http://semver.org/) convention, version 1.x contains a few breaking changes from the prototype v0.0.x of `gridfs-locks`. The main difference is that v1.x Lock and LockCollection objects are now [event-emitters](http://nodejs.org/api/events.html). There are three primary impacts of these changes:
 
 1.    All async callbacks have been eliminated from the API method parameter lists and replaced with events
 2.    A much richer set of async events (eg. lock expirations) can now be observed and handled in a more intuitive way

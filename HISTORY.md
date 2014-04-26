@@ -1,6 +1,7 @@
 ### 1.1.0
 
 - Refactoring of mongo queries to make many lock operations significantly faster
+- Fixed an issue when multiple read lock holders hold locks with different expiration time lengths, and a lock with a shorter expiration renews and overwrites the later expiring lock's expiration time in the DB.
 
 ### 1.0.3
 
