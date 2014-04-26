@@ -1,3 +1,7 @@
+### 1.1.0
+
+- Refactoring of mongo queries to make many lock operations significantly faster
+
 ### 1.0.3
 
 - Fixed typos in README.md code snippets
