@@ -259,17 +259,29 @@ Lock.prototype.renewLock = function() {
 
   self.lockExpireTime = new Date(new Date().getTime() + (self.lockExpiration || never));
 
-  self.collection.findAndModify({files_id: self.fileId},
+  self.collection.findAndModify({files_id: self.fileId, expires: { $lt: self.lockExpireTime }},
     [],
     {$max: {expires: self.lockExpireTime}},  // don't clobber an already extended shared read lock
     {w: self.lockCollection.writeConcern, new: true},
     function (err, doc) {
       if (err) { return emitError(self, err); }
-      if (doc == null) { return emitError(self, "Lock.renewLock document not found in collection"); }
-      self.heldLock = doc;
-      self.expiresSoonTimeout = setTimeout(emitExpiresSoonEvent.bind(self, ''), 0.9*(self.lockExpireTime - new Date() - self.pollingInterval));
-      self.expiredTimeout = setTimeout(emitExpiredEvent.bind(self, ''), (self.lockExpireTime - new Date() - self.pollingInterval));
-      return self.emit('renewed', doc);
+      if (doc == null) {
+        self.collection.findOne({files_id: self.fileId}, function (err, doc) {
+          if (err) { return emitError(self, err); }
+          if (doc == null) {
+            return emitError(self, "Lock.renewLock document not found in collection");
+          }
+          self.heldLock = doc;
+          self.expiresSoonTimeout = setTimeout(emitExpiresSoonEvent.bind(self, ''), 0.9*(self.lockExpireTime - new Date() - self.pollingInterval));
+          self.expiredTimeout = setTimeout(emitExpiredEvent.bind(self, ''), (self.lockExpireTime - new Date() - self.pollingInterval));
+          return self.emit('renewed', doc);
+        });
+      } else {
+        self.heldLock = doc;
+        self.expiresSoonTimeout = setTimeout(emitExpiresSoonEvent.bind(self, ''), 0.9*(self.lockExpireTime - new Date() - self.pollingInterval));
+        self.expiredTimeout = setTimeout(emitExpiredEvent.bind(self, ''), (self.lockExpireTime - new Date() - self.pollingInterval));
+        return self.emit('renewed', doc);
+      }
     });
   return self;
 };
