@@ -1,3 +1,7 @@
+### 1.1.1
+
+- Revert from use of MongoDB 2.6 only $currentDate update modifier to maintain compatibility with mongo 2.4.x
+
 ### 1.1.0
 
 - Refactoring of mongo queries to make many lock operations significantly faster

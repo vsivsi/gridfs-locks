@@ -17,7 +17,7 @@ Requires node.js, npm, and uses the native node.js mongo driver.
 
     npm install gridfs-locks
 
-To run unit tests (requres mongodb server on `localhost:27017`):
+To run unit tests (requires mongodb server on `localhost:27017`):
 
     npm test
 

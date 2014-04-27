@@ -197,7 +197,7 @@ Lock.prototype.releaseLock = function () {
   } else if (self.lockType[0] === 'w') {
 
     query = {files_id: self.fileId, write_lock: true},
-    update = {$set: {write_lock: false, meta: null}, $currentDate: { expires: true }};
+    update = {$set: {write_lock: false, expires: new Date(), meta: null}};
 
   } else {
     return emitError(self, "Lock.releaseLock invalid lockType.");
@@ -220,10 +220,10 @@ Lock.prototype.releaseLock = function () {
     // This prevents a former long expire time from persisting into new read locks unnecessarily.
     // There is a small time window between the findAndModify above and the one below where a long expire time
     // may be inheritied by a new read lock, but the window should be short enough that this is tolerable
-    // because the lock->unlock->lock order of operations could have easily have been lock->lock->unlock
+    // because the lock->unlock->lock order of operations could just as easily have been lock->lock->unlock
     if ((lt === 'r') && doc && (doc.read_locks == 0)) {
       query = {files_id: self.fileId, read_locks: 0, write_lock: false};
-      update = {$currentDate: { expires: true }};
+      update = {$set: { expires: new Date() }};
       self.collection.findAndModify(query, [], update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
         if (err) { console.warn("Error returned from expiration time reset on release", err); }
       });
