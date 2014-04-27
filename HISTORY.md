@@ -1,3 +1,8 @@
+### 1.1.2
+
+- Revert completely to use of MongoDB 2.4.x only update modifiers to maintain compatibility with mongo 2.4.x
+- The more efficient MongoDB 2.6 version lives in the mongodb_2.6 branch for now until if can be cleanly included conditionally
+
 ### 1.1.1
 
 - Revert from use of MongoDB 2.6 only $currentDate update modifier to maintain compatibility with mongo 2.4.x
