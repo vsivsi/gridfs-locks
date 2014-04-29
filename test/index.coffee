@@ -58,8 +58,8 @@ describe 'gridfs-locks', () ->
     it "should use the default GridFS collection root when no root is given", () ->
       assert.equal lockColl.collection.collectionName, mongo.GridStore.DEFAULT_ROOT_COLLECTION + ".locks"
 
-    it "should have nine keys", () ->
-      assert.equal Object.keys(lockColl).length, 9
+    it "should have ten keys", () ->
+      assert.equal Object.keys(lockColl).length, 10
 
     it "should properly record all options", (done) ->
       lc = LockCollection db, { root: "test", w: 16, timeOut: 16, pollingInterval: 16, lockExpiration: 16, metaData: 16 }

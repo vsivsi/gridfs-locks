@@ -1,3 +1,8 @@
+### 1.2.0
+
+- Introduced independant code paths depending on whether a lock collection is hosted on a MongoDB 2.4 or 2.6+ server. Use of one path or the other is transparent to the user.
+- The benefits for MongoDB 2.6 first introduced in v1.1.0 are now back. Support for Mongo 2.4 remains as it was prior to v1.1.0. Both server version use the same gridfs-locks API and have the same functionality, but the MongoDB 2.6 code is simpler and should be more performant, mostly through a reduction in the number of queries used, especially under heavy locking load.
+
 ### 1.1.2
 
 - Revert completely to use of MongoDB 2.4.x only update modifiers to maintain compatibility with mongo 2.4.x
