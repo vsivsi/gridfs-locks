@@ -61,8 +61,6 @@ var LockCollection = exports.LockCollection = function(db, options) {
 
     self._isMongo26 = is26;
 
-    console.log("Is mongodb 2.6?", self._isMongo26);
-
     db.collection(collectionName, function(err, collection) {
 
       if (err) { return emitError(self, err); }
