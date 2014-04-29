@@ -8,6 +8,18 @@ var eventEmitter = require('events').EventEmitter;
 
 var never = 8000000000000000;  // never + now = 20000 years shy of max Date(), about 250,000 years from now
 
+var isMongo26 = function (db, callback) {
+  db.command({ buildInfo: 1 }, function (err, res) {
+    if (err) { return callback(err); }
+    if (res && res.versionArray) {
+      retval = (res.versionArray[0] == 2 && res.versionArray[1] >= 6);
+      return callback(null, retval);
+    } else {
+      return callback(new Error("MongoDB buildInfo returned invalid information"));
+    }
+  });
+};
+
 //
 // Parameters:
 //
@@ -42,16 +54,24 @@ var LockCollection = exports.LockCollection = function(db, options) {
 
   options.root = options.root || 'fs';
   collectionName = options.root + '.locks';
-  db.collection(collectionName, function(err, collection) {
+
+  isMongo26(db, function (err, is26) {
 
     if (err) { return emitError(self, err); }
 
-    // Ensure unique files_id so there can only be one lock doc per file
-    collection.ensureIndex([['files_id', 1]], {unique:true}, function(err, index) {
+    self._isMongo26 = is26;
+
+    db.collection(collectionName, function(err, collection) {
 
       if (err) { return emitError(self, err); }
-      self.collection = collection;
-      self.emit('ready');
+
+      // Ensure unique files_id so there can only be one lock doc per file
+      collection.ensureIndex([['files_id', 1]], {unique:true}, function(err, index) {
+
+        if (err) { return emitError(self, err); }
+        self.collection = collection;
+        self.emit('ready');
+      });
     });
   });
 
