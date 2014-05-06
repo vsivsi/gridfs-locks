@@ -457,10 +457,6 @@ var timeoutReadLockQuery = function (self, options) {
     self.update,
     { w: self.lockCollection.writeConcern, new: true, upsert: true },
     function (err, doc) {
-      // if (err) { console.log("ERROR:", err); }
-      //
-      // XXX: Handle unique index exception when simultaneous upserts collide...
-      //
       if (err && ((err.name !== 'MongoError') || (err.lastErrorObject.code !== 11000))) { return emitError(self, err); }
       if (!doc) {
         if (new Date().getTime() - self.timeCreated >= self.timeOut) {
@@ -515,10 +511,6 @@ var timeoutWriteLockQuery = function (self, options) {
     self.update,
     {w: self.lockCollection.writeConcern, new: true, upsert: true},
     function (err, doc) {
-      // if (err) { console.log("ERROR:", err); }
-      //
-      // XXX: Handle unique index exception when simultaneous upserts collide...
-      //
       if (err && ((err.name !== 'MongoError') || (err.lastErrorObject.code !== 11000))) { return emitError(self, err); }
       if (doc) {
         self.heldLock = doc;
