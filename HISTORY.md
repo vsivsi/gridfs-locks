@@ -1,3 +1,8 @@
+### 1.2.1
+
+- Fixed errors stemming from improper checking of the mongo error code in an emitted error object.
+- Ensure that lockExpiration >= pollingInterval, or expirations may become instantaneous
+
 ### 1.2.0
 
 - Introduced independant code paths depending on whether a lock collection is hosted on a MongoDB 2.4 or 2.6+ server. Use of one path or the other is transparent to the user.

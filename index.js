@@ -123,6 +123,12 @@ var Lock = exports.Lock = function(fileId, lockCollection, options) {
   self.timeCreated = new Date();
   self.pollingInterval = 1000*(options.pollingInterval || self.lockCollection.pollingInterval);
   self.lockExpiration = 1000*(options.lockExpiration || self.lockCollection.lockExpiration);
+
+  // This ensures that locks don't emit expirations immediately
+  if (self.lockExpiration && self.lockExpiration < self.pollingInterval * 1.1) {
+    self.lockExpiration = self.pollingInterval * 1.1
+  }
+
   self.lockExpireTime = new Date(self.timeCreated.getTime() + (self.lockExpiration || never));
   self.timeOut = 1000*(options.timeOut || self.lockCollection.timeOut);
   self.metaData = options.metaData || self.lockCollection.metaData;
@@ -131,6 +137,7 @@ var Lock = exports.Lock = function(fileId, lockCollection, options) {
   self.update = null;
   self.heldLock = null;
   self.expired = false;
+
   return self;
 };
 
@@ -457,7 +464,8 @@ var timeoutReadLockQuery = function (self, options) {
     self.update,
     { w: self.lockCollection.writeConcern, new: true, upsert: true },
     function (err, doc) {
-      if (err && ((err.name !== 'MongoError') || (err.lastErrorObject.code !== 11000))) { return emitError(self, err); }
+      // if (err) { console.log("Error", err)}
+      if (err && ((err.name !== 'MongoError') || (err.code !== 11000))) { return emitError(self, err); }
       if (!doc) {
         if (new Date().getTime() - self.timeCreated >= self.timeOut) {
           return self.emit('timed-out');
@@ -511,7 +519,8 @@ var timeoutWriteLockQuery = function (self, options) {
     self.update,
     {w: self.lockCollection.writeConcern, new: true, upsert: true},
     function (err, doc) {
-      if (err && ((err.name !== 'MongoError') || (err.lastErrorObject.code !== 11000))) { return emitError(self, err); }
+      // if (err) { console.log("Error", err)}
+      if (err && ((err.name !== 'MongoError') || (err.code !== 11000))) { return emitError(self, err); }
       if (doc) {
         self.heldLock = doc;
         if (self.lockExpiration) {
