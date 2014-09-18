@@ -1,6 +1,6 @@
 ### 1.2.2
 
-- Fixed issue #2, a bug that blocked all read locks when a program aborts with an outstanding write lock request, under MongoDB 2.6
+- Fixed issue #2, a bug that blocked all read locks when a program aborts with an outstanding write lock request, under MongoDB 2.6 only. Thanks to @cearl for reporting.
 
 ### 1.2.1
 
