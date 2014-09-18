@@ -442,8 +442,7 @@ var timeoutReadLockQuery = function (self, options) {
                  $or: [
                         { write_lock: false,
                           write_req: false },
-                        { write_lock: true,
-                          expires: { $lt: new Date(now - 2*self.pollingInterval) }}
+                        { expires: { $lt: new Date(now - 2*self.pollingInterval) }}
                       ]
                };
 
