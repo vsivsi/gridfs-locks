@@ -791,7 +791,7 @@ describe 'gridfs-locks', () ->
                   done())
 
     it "should allow a read request to proceed when a prior write request dies without releasing write_req", (done) ->
-      expectedOrder = "1331"
+      expectedOrder = "12133"
       order = ''
       lock2.timeOut = 100
       lock1.lockExpiration = 1000
@@ -802,15 +802,16 @@ describe 'gridfs-locks', () ->
         # set the write_req flag without creating a lock, to simulate a dead write request
         setWriteReq lock2, (err, doc) ->
           assert not err
-          lock3.obtainReadLock().on 'locked', (ld) ->
+          order += '2'
+          lock1.releaseLock().on 'released', (ld) ->
             assert ld?
-            order += '3'
-            lock3.releaseLock().on 'released', (ld) ->
+            order += '1'
+            lock3.obtainReadLock().on 'locked', (ld) ->
               assert ld?
               order += '3'
-              lock1.releaseLock().on 'released', (ld) ->
+              lock3.releaseLock().on 'released', (ld) ->
                 assert ld?
-                order += '1'
+                order += '3'
                 assert.equal order, expectedOrder
                 done()
 
@@ -836,7 +837,7 @@ describe 'gridfs-locks', () ->
                 done())
 
     it "should allow a read request to proceed when a prior write request dies waiting for a write lock without releasing write_req", (done) ->
-      expectedOrder = "133"
+      expectedOrder = "12133"
       order = ''
       lock2.timeOut = 100
       lock1.lockExpiration = 1000
@@ -846,14 +847,18 @@ describe 'gridfs-locks', () ->
         # set the write_req flag without creating a lock, to simulate a dead write request
         setWriteReq lock2, (err, doc) ->
           assert not err
-          lock3.obtainReadLock().on 'locked', (ld) ->
+          order += '2'
+          lock1.releaseLock().on 'released', (ld) ->
             assert ld?
-            order += '3'
-            lock3.releaseLock().on 'released', (ld) ->
+            order += '1'
+            lock3.obtainReadLock().on 'locked', (ld) ->
               assert ld?
               order += '3'
-              assert.equal order, expectedOrder
-              done()
+              lock3.releaseLock().on 'released', (ld) ->
+                assert ld?
+                order += '3'
+                assert.equal order, expectedOrder
+                done()
 
     it "of a new read lock shouldn't be affected by when the previous write lock was due to expire", (done) ->
       lock1.lockExpiration = 0  # Never expires
