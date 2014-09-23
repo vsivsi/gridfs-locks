@@ -6,6 +6,16 @@ mongo = require 'mongodb'
 Lock = require('../index').Lock
 LockCollection = require('../index').LockCollection
 
+# Used for simulating dead write requests
+setWriteReq = (lock, cb) ->
+  lock.collection.findAndModify(
+    { files_id: lock.fileId }
+    []
+    { $set: { write_req: true }}
+    {w: lock.lockCollection.writeConcern}
+    cb
+  )
+
 describe 'gridfs-locks', () ->
 
   db = null
@@ -558,7 +568,7 @@ describe 'gridfs-locks', () ->
                 done()
             lock1.releaseLock().on 'released', (ld) ->
               assert ld?
-              order += '1');
+              order += '1')
 
     it "should give priority to a write request waiting on a write lock over a subsequent read request", (done) ->
       expectedOrder = "112233"
@@ -583,7 +593,7 @@ describe 'gridfs-locks', () ->
                 done()
             lock1.releaseLock().on 'released', (ld) ->
               assert ld?
-              order += '1');
+              order += '1')
 
     it "should allow a read request to proceed when a prior write request times out", (done) ->
       expectedOrder = "1331"
@@ -606,7 +616,7 @@ describe 'gridfs-locks', () ->
                   assert ld?
                   order += '1'
                   assert.equal order, expectedOrder
-                  done());
+                  done())
 
   describe 'lock expiration', () ->
 
@@ -731,7 +741,7 @@ describe 'gridfs-locks', () ->
                 assert ld?
                 order += '3'
                 assert.equal order, expectedOrder
-                done());
+                done())
 
     it "should give priority to a write request waiting on a dead write lock over a subsequent read request", (done) ->
       expectedOrder = "12233"
@@ -753,9 +763,9 @@ describe 'gridfs-locks', () ->
                 assert ld?
                 order += '3'
                 assert.equal order, expectedOrder
-                done());
+                done())
 
-    it "should allow a read request to proceed when a prior write request dies without releasing write_req", (done) ->
+    it "should allow a read request to proceed when a prior write request times-out", (done) ->
       expectedOrder = "1331"
       order = ''
       lock2.timeOut = 100
@@ -778,13 +788,37 @@ describe 'gridfs-locks', () ->
                   assert ld?
                   order += '1'
                   assert.equal order, expectedOrder
-                  done());
+                  done())
 
-    it "should allow a read request to proceed when a prior write request dies waiting for a dead write lock without releasing write_req", (done) ->
+    it "should allow a read request to proceed when a prior write request dies without releasing write_req", (done) ->
+      expectedOrder = "1331"
+      order = ''
+      lock2.timeOut = 100
+      lock1.lockExpiration = 1000
+      lock3.lockExpiration = 1000
+      lock1.obtainReadLock().on 'locked', (ld) ->
+        assert ld?
+        order += '1'
+        # set the write_req flag without creating a lock, to simulate a dead write request
+        setWriteReq lock2, (err, doc) ->
+          assert not err
+          lock3.obtainReadLock().on 'locked', (ld) ->
+            assert ld?
+            order += '3'
+            lock3.releaseLock().on 'released', (ld) ->
+              assert ld?
+              order += '3'
+              lock1.releaseLock().on 'released', (ld) ->
+                assert ld?
+                order += '1'
+                assert.equal order, expectedOrder
+                done()
+
+    it "should allow a read request to proceed when a prior write request times-out waiting for a write lock", (done) ->
       expectedOrder = "133"
       order = ''
       lock2.timeOut = 100
-      lock3.lockExpiration = 1000
+      lock1.lockExpiration = 1000
       lock1.obtainWriteLock().on 'locked', (ld) ->
         assert ld?
         order += '1'
@@ -799,7 +833,27 @@ describe 'gridfs-locks', () ->
                 assert ld?
                 order += '3'
                 assert.equal order, expectedOrder
-                done());
+                done())
+
+    it "should allow a read request to proceed when a prior write request dies waiting for a write lock without releasing write_req", (done) ->
+      expectedOrder = "133"
+      order = ''
+      lock2.timeOut = 100
+      lock1.lockExpiration = 1000
+      lock1.obtainWriteLock().on 'locked', (ld) ->
+        assert ld?
+        order += '1'
+        # set the write_req flag without creating a lock, to simulate a dead write request
+        setWriteReq lock2, (err, doc) ->
+          assert not err
+          lock3.obtainReadLock().on 'locked', (ld) ->
+            assert ld?
+            order += '3'
+            lock3.releaseLock().on 'released', (ld) ->
+              assert ld?
+              order += '3'
+              assert.equal order, expectedOrder
+              done()
 
     it "of a new read lock shouldn't be affected by when the previous write lock was due to expire", (done) ->
       lock1.lockExpiration = 0  # Never expires
