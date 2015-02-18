@@ -1,7 +1,7 @@
 # Unit tests
 
 assert = require 'assert'
-mongo = require 'mongodb'
+mongo = require('mongodb')
 
 Lock = require('../index').Lock
 LockCollection = require('../index').LockCollection
@@ -21,9 +21,9 @@ describe 'gridfs-locks', () ->
   db = null
 
   before (done) ->
-    server = new mongo.Server 'localhost', 27017
-    db = new mongo.Db 'gridfs_locks_test', server, {w:0}
-    db.open () ->
+    server = mongo.MongoClient.connect 'mongodb://localhost:27017/test', (err, connection) ->
+      throw err if err
+      db = connection
       done()
 
   describe 'LockCollection', () ->
@@ -68,8 +68,8 @@ describe 'gridfs-locks', () ->
     it "should use the default GridFS collection root when no root is given", () ->
       assert.equal lockColl.collection.collectionName, mongo.GridStore.DEFAULT_ROOT_COLLECTION + ".locks"
 
-    it "should have ten keys", () ->
-      assert.equal Object.keys(lockColl).length, 10
+    it "should have eleven keys", () ->
+      assert.equal Object.keys(lockColl).length, 11
 
     it "should properly record all options", (done) ->
       lc = LockCollection db, { root: "test", w: 16, timeOut: 16, pollingInterval: 16, lockExpiration: 16, metaData: 16 }
@@ -89,7 +89,7 @@ describe 'gridfs-locks', () ->
     fileId = null
 
     before (done) ->
-      fileId = new mongo.BSONPure.ObjectID
+      fileId = new mongo.ObjectID
       lockColl = LockCollection db
       lockColl.on 'ready', () ->
         lock = Lock fileId, lockColl, {}
@@ -145,7 +145,7 @@ describe 'gridfs-locks', () ->
       id = null
 
       before () ->
-        id = new mongo.BSONPure.ObjectID
+        id = new mongo.ObjectID
         lock1 = Lock id, lockColl, {}
         lock2 = Lock id, lockColl, {}
 
@@ -178,7 +178,6 @@ describe 'gridfs-locks', () ->
           assert.throws (() -> throw e), /cannot obtain an already held lock/
           done()
         lock1.on 'locked', (ld) ->
-          console.log "Here!", ld
           assert false
 
       it "should return a valid second read lock on a different lock object", (done) ->
@@ -221,7 +220,7 @@ describe 'gridfs-locks', () ->
         it "should fail to return a valid write lock", (done) ->
           lock2.obtainWriteLock().on 'timed-out', () ->
             done()
-          lock2.on 'locked', () ->
+          lock2.on 'locked', (ld) ->
             assert false
 
     describe 'obtainWriteLock', () ->
@@ -231,7 +230,7 @@ describe 'gridfs-locks', () ->
       id = null
 
       before () ->
-        id = new mongo.BSONPure.ObjectID
+        id = new mongo.ObjectID
         lock1 = Lock id, lockColl, {}
         lock2 = Lock id, lockColl, {}
 
@@ -333,8 +332,8 @@ describe 'gridfs-locks', () ->
       id2 = null
 
       before (done) ->
-        id = new mongo.BSONPure.ObjectID
-        id2 = new mongo.BSONPure.ObjectID
+        id = new mongo.ObjectID
+        id2 = new mongo.ObjectID
         lock1 = Lock id, lockColl, {}
         lock2 = Lock id, lockColl, {}
         lock2.obtainReadLock().on 'locked', (ld) ->
@@ -376,8 +375,8 @@ describe 'gridfs-locks', () ->
       id2 = null
 
       before (done) ->
-        id = new mongo.BSONPure.ObjectID
-        id2 = new mongo.BSONPure.ObjectID
+        id = new mongo.ObjectID
+        id2 = new mongo.ObjectID
         lock1 = Lock id, lockColl, {}
         lock2 = Lock id, lockColl, {}
         lock2.obtainWriteLock().on 'locked', (ld) ->
@@ -427,7 +426,7 @@ describe 'gridfs-locks', () ->
       id = null
 
       before (done) ->
-        id = new mongo.BSONPure.ObjectID
+        id = new mongo.ObjectID
         lock1 = Lock id, lockColl, { lockExpiration: 60 }
         lock1.obtainReadLock().on 'locked', (ld) ->
           assert ld?
@@ -476,7 +475,7 @@ describe 'gridfs-locks', () ->
       lockColl.on 'ready', done
 
     beforeEach () ->
-      id = new mongo.BSONPure.ObjectID
+      id = new mongo.ObjectID
       lock1 = Lock id, lockColl, {}
       lock2 = Lock id, lockColl, {}
       lock3 = Lock id, lockColl, {}
@@ -633,7 +632,7 @@ describe 'gridfs-locks', () ->
       lockColl.on 'ready', done
 
     beforeEach () ->
-      id = new mongo.BSONPure.ObjectID
+      id = new mongo.ObjectID
       lock1 = Lock id, lockColl, {}
       lock2 = Lock id, lockColl, {}
       lock3 = Lock id, lockColl, {}
@@ -929,7 +928,7 @@ describe 'gridfs-locks', () ->
       lockColl.on 'ready', done
 
     beforeEach () ->
-      id = new mongo.BSONPure.ObjectID
+      id = new mongo.ObjectID
       locksArray = (Lock(id, lockColl, {}) for x in [0...numLocks])
 
     it 'should accomodate hundreds of simultaneous readers on a resource', (done) ->
@@ -937,13 +936,13 @@ describe 'gridfs-locks', () ->
       for l in locksArray
         myTimeout Math.floor(10000*Math.random()), l, (l) ->
           l.obtainReadLock().on 'locked', (ld) ->
-            # console.log "RL", released, ld.write_lock, ld.write_req, ld.read_locks
+            console.log "RL", released, ld.write_lock, ld.write_req, ld.read_locks
             assert ld?
             myTimeout 5, l, (l) ->
               l.releaseLock().on 'released', (ld) ->
                 assert ld?
                 released++
-                # console.log "RUL", released, ld.write_lock, ld.write_req, ld.read_locks
+                console.log "RUL", released, ld.write_lock, ld.write_req, ld.read_locks
                 done() if released is numLocks
 
     it 'should accomodate hundreds of simultaneous writers on a resource', (done) ->
@@ -952,7 +951,7 @@ describe 'gridfs-locks', () ->
       for l, x in locksArray when x < numLocks*writeLockFraction
         myTimeout Math.floor(10000*Math.random()), l, (l) ->
           l.obtainWriteLock().on 'locked', (ld) ->
-            # console.log "WL", released, ld.write_lock, ld.write_req, ld.read_locks
+            console.log "WL", released, ld.write_lock, ld.write_req, ld.read_locks
             assert ld?
             assert.equal Math.floor(currentValue), currentValue
             currentValue += 0.5
@@ -961,17 +960,17 @@ describe 'gridfs-locks', () ->
               l.releaseLock().on 'released', (ld) ->
                 assert ld?
                 released++
-                # console.log "WUL", released, ld.write_lock, ld.write_req, ld.read_locks
+                console.log "WUL", released, ld.write_lock, ld.write_req, ld.read_locks
                 done() if released is numLocks*writeLockFraction
 
-    it 'should accomodate hundreds of simultaneous readers/writers on a resource', (done) ->
+    it.only 'should accomodate hundreds of simultaneous readers/writers on a resource', (done) ->
       released = 0
       currentValue = 0
       for l, x in locksArray
         myTimeout Math.floor(10000*Math.random()), l, (l) ->
           if Math.random() <= writeLockFraction
             l.obtainWriteLock().on 'locked', (ld) ->
-              # console.log "WL", new Date().toJSON(), released, JSON.stringify(ld), JSON.stringify(l.query), JSON.stringify(l.update)
+              console.log "WL", new Date().toJSON(), released, JSON.stringify(ld), JSON.stringify(l.query), JSON.stringify(l.update)
               assert ld?
               assert ld.expires.getTime() > new Date().getTime() + 100000
               assert.equal Math.floor(currentValue), currentValue
@@ -981,11 +980,11 @@ describe 'gridfs-locks', () ->
                 l.releaseLock().on 'released', (ld) ->
                   assert ld?
                   released++
-                  # console.log "WUL", new Date().toJSON(), released, JSON.stringify(ld)
+                  console.log "WUL", new Date().toJSON(), released, JSON.stringify(ld)
                   done() if released is numLocks
           else
             l.obtainReadLock().on 'locked', (ld) ->
-              # console.log "RL", new Date().toJSON(), released, JSON.stringify(ld), JSON.stringify(l.query), JSON.stringify(l.update)
+              console.log "RL", new Date().toJSON(), released, JSON.stringify(ld), JSON.stringify(l.query), JSON.stringify(l.update)
               assert ld?
               assert ld.expires.getTime() > new Date().getTime() + 100000
               assert.equal Math.floor(currentValue), currentValue
@@ -993,7 +992,7 @@ describe 'gridfs-locks', () ->
                 l.releaseLock().on 'released', (ld) ->
                   assert ld?
                   released++
-                  # console.log "RUL", new Date().toJSON(), released, JSON.stringify(ld)
+                  console.log "RUL", new Date().toJSON(), released, JSON.stringify(ld)
                   done() if released is numLocks
 
   describe 'testing with timeouts and expiration under load', () ->
@@ -1014,7 +1013,7 @@ describe 'gridfs-locks', () ->
       lockColl.on 'ready', done
 
     beforeEach () ->
-      id = new mongo.BSONPure.ObjectID
+      id = new mongo.ObjectID
       locksArray = (Lock(id, lockColl, {}) for x in [0...numLocks])
 
     it 'should accomodate hundreds of simultaneous readers/writers on a resource', (done) ->

@@ -5,7 +5,7 @@
   "main": "index.js",
   "dependencies": {},
   "devDependencies": {
-    "mongodb": ">=1.4.12",
+    "mongodb": ">=2.0.15",
     "coffee-script": "*",
     "mocha": "*"
   },

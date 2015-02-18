@@ -1,5 +1,5 @@
 /***********************************************************************
-     Copyright (C) 2014 by Vaughn Iverson
+     Copyright (C) 2014-2015 by Vaughn Iverson
      gridfs-locks is free software released under the MIT/X11 license.
      See included LICENSE file for details.
 ************************************************************************/
@@ -19,6 +19,8 @@ var isMongo26 = function (db, callback) {
     }
   });
 };
+
+var isMongoDriver20 = function (db) { return (db.Grid === undefined); }
 
 //
 // Parameters:
@@ -54,6 +56,8 @@ var LockCollection = exports.LockCollection = function(db, options) {
 
   options.root = options.root || 'fs';
   collectionName = options.root + '.locks';
+
+  self._isMongoDriver20 = isMongoDriver20(db);
 
   isMongo26(db, function (err, is26) {
 
@@ -172,7 +176,7 @@ Lock.prototype.removeLock = function () {
 
     self.collection.findAndRemove(query, [], {w: self.lockCollection.writeConcern}, function (err, doc) {
       if (err) { return emitError(self, err); }
-
+      if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
       self.lockType = null;
       self.query = null;
       self.update = null;
@@ -235,6 +239,7 @@ Lock.prototype.releaseLock = function () {
     self.collection.findAndModify(query, [], update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
 
       if (err) { return emitError(self, err); }
+      if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
 
       var lt = self.lockType;
       self.lockType = null;
@@ -301,6 +306,7 @@ Lock.prototype.renewLock = function() {
       {w: self.lockCollection.writeConcern, new: true},
       function (err, doc) {
         if (err) { return emitError(self, err); }
+        if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
         if (doc == null) { return emitError(self, "Lock.renewLock document not found in collection"); }
         self.heldLock = doc;
         self.expiresSoonTimeout = setTimeout(emitExpiresSoonEvent.bind(self, ''), 0.9*(self.lockExpireTime - new Date() - self.pollingInterval));
@@ -465,6 +471,7 @@ var timeoutReadLockQuery = function (self, options) {
     function (err, doc) {
       // if (err) { console.log("Error", err)}
       if (err && ((err.name !== 'MongoError') || (err.code !== 11000))) { return emitError(self, err); }
+      if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
       if (!doc) {
         if (new Date().getTime() - self.timeCreated >= self.timeOut) {
           return self.emit('timed-out');
@@ -520,6 +527,7 @@ var timeoutWriteLockQuery = function (self, options) {
     function (err, doc) {
       // if (err) { console.log("Error", err)}
       if (err && ((err.name !== 'MongoError') || (err.code !== 11000))) { return emitError(self, err); }
+      if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
       if (doc) {
         self.heldLock = doc;
         if (self.lockExpiration) {
@@ -596,6 +604,7 @@ var releaseLock_24 = function () {
     // Case for read_locks > 1
     self.collection.findAndModify(query, [], update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
       if (err) { return emitError(self, err); }
+      if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
       if (doc) {
         self.lockType = null;
         self.query = null;
@@ -611,6 +620,7 @@ var releaseLock_24 = function () {
         // Case for read_locks == 1
         self.collection.findAndModify(query, [], update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
           if (err) { return emitError(self, err); }
+          if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
           if (doc) {
             self.lockType = null;
             self.query = null;
@@ -623,6 +633,7 @@ var releaseLock_24 = function () {
             // Avoid an infinite loop when lock document no longer exists
             self.collection.findOne({files_id: self.fileId, read_locks: {$gt: 0}}, function (err, doc) {
               if (err) { return emitError(self, err); }
+              if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
               if (doc == null) {
                 return emitError(self, "Lock.releaseLock Valid read Lock document not found in collection. " + JSON.stringify(self.heldLock));
               } else {
@@ -641,7 +652,7 @@ var releaseLock_24 = function () {
 
     self.collection.findAndModify(query, [], update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
       if (err) { return emitError(self, err); }
-
+      if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
       self.lockType = null;
       self.query = null;
       self.update = null;
@@ -674,9 +685,11 @@ var renewLock_24 = function() {
     {w: self.lockCollection.writeConcern, new: true},
     function (err, doc) {
       if (err) { return emitError(self, err); }
+      if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
       if (doc == null) {
         self.collection.findOne({files_id: self.fileId}, function (err, doc) {
           if (err) { return emitError(self, err); }
+          if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
           if (doc == null) {
             return emitError(self, "Lock.renewLock document not found in collection");
           }
@@ -705,6 +718,7 @@ var obtainReadLock_24 = function() {
   self.timeCreated = new Date();
   initializeLockDoc_24(self, function (err, doc) {
     if (err) { return emitError(self, err); }
+    if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
     self.lockType = 'r';
     self.expired = false;
     timeoutReadLockQuery_24(self);
@@ -722,6 +736,7 @@ var obtainWriteLock_24 = function(testingOptions) {
   self.timeCreated = new Date();
   initializeLockDoc_24(self, function (err, doc) {
     if (err) { return emitError(self, err); }
+    if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
     self.expired = false;
     self.lockType = 'w';
     timeoutWriteLockQuery_24(self, testingOptions);
@@ -760,6 +775,7 @@ var timeoutReadLockQuery_24 = function (self, options) {
     {w: self.lockCollection.writeConcern, new: true},
     function (err, doc) {
       if (err) { return emitError(self, err); }
+      if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
       if (!doc) {
         // Try again without trying to update the expire time
         // console.log("Second try...");
@@ -773,6 +789,7 @@ var timeoutReadLockQuery_24 = function (self, options) {
           {w: self.lockCollection.writeConcern, new: true},
           function (err, doc) {
             if (err) { return emitError(self, err); }
+            if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
             if (!doc) {
               if(new Date().getTime() - self.timeCreated >= self.timeOut) {
                 return self.emit('timed-out');
@@ -807,6 +824,7 @@ var timeoutWriteLockQuery_24 = function (self, options) {
     {w: self.lockCollection.writeConcern, new: true},
     function (err, doc) {
       if (err) { return emitError(self, err); }
+      if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
       if (doc) {
         self.heldLock = doc;
         if (self.lockExpiration) {
