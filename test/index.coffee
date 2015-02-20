@@ -963,7 +963,7 @@ describe 'gridfs-locks', () ->
                 console.log "WUL", released, ld.write_lock, ld.write_req, ld.read_locks
                 done() if released is numLocks*writeLockFraction
 
-    it.only 'should accomodate hundreds of simultaneous readers/writers on a resource', (done) ->
+    it 'should accomodate hundreds of simultaneous readers/writers on a resource', (done) ->
       released = 0
       currentValue = 0
       for l, x in locksArray

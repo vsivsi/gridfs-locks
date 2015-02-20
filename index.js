@@ -20,7 +20,15 @@ var isMongo26 = function (db, callback) {
   });
 };
 
-var isMongoDriver20 = function (db) { return (db.Grid === undefined); }
+var isMongoDriver20 = function (collection, callback) {
+  collection.insert({testdoc: true}, function (err, res) {
+    if (err) { return callback(err); }
+    collection.findAndRemove({testdoc: true}, [['testdoc', 1]], function (err, res) {
+      if (err) { return callback(err); }
+      callback(null, (res.ok === 1));
+    });
+  });
+};
 
 //
 // Parameters:
@@ -57,8 +65,6 @@ var LockCollection = exports.LockCollection = function(db, options) {
   options.root = options.root || 'fs';
   collectionName = options.root + '.locks';
 
-  self._isMongoDriver20 = isMongoDriver20(db);
-
   isMongo26(db, function (err, is26) {
 
     if (err) { return emitError(self, err); }
@@ -66,15 +72,19 @@ var LockCollection = exports.LockCollection = function(db, options) {
     self._isMongo26 = is26;
 
     db.collection(collectionName, function(err, collection) {
-
       if (err) { return emitError(self, err); }
 
-      // Ensure unique files_id so there can only be one lock doc per file
-      collection.ensureIndex([['files_id', 1]], {unique:true}, function(err, index) {
-
+      isMongoDriver20(collection, function (err, is20) {
         if (err) { return emitError(self, err); }
-        self.collection = collection;
-        self.emit('ready');
+        self._isMongoDriver20 = is20;
+        console.log("Is 2.0???", self._isMongoDriver20);
+
+        // Ensure unique files_id so there can only be one lock doc per file
+        collection.ensureIndex([['files_id', 1]], {unique:true}, function(err, index) {
+          if (err) { return emitError(self, err); }
+          self.collection = collection;
+          self.emit('ready');
+        });
       });
     });
   });
@@ -345,7 +355,6 @@ Lock.prototype.obtainReadLock = function() {
   var self = this;
 
   if (self.lockCollection._isMongo26) {  // Begin Mongo 2.6 support
-
     self.timeCreated = new Date();
     if (self.heldLock) {
       return emitError(self, "Lock.obtainReadLock cannot obtain an already held lock.");
@@ -470,9 +479,10 @@ var timeoutReadLockQuery = function (self, options) {
     self.update,
     { w: self.lockCollection.writeConcern, new: true, upsert: true },
     function (err, doc) {
+      console.log("In query callback!", err, doc);
       // if (err) { console.log("Error", err)}
       if (err && ((err.name !== 'MongoError') || (err.code !== 11000))) { return emitError(self, err); }
-      if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
+      if (self.lockCollection._isMongoDriver20 && doc) { console.log("I think it's 2.0!!!"); doc = doc.value; }
       if (!doc) {
         if (new Date().getTime() - self.timeCreated >= self.timeOut) {
           return self.emit('timed-out');
