@@ -260,6 +260,7 @@ Lock.prototype.releaseLock = function () {
         update = {$currentDate: { expires: true }};
         self.collection.findAndModify(query, [], update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
           if (err) { console.warn("Error returned from expiration time reset on release", err); }
+          if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
         });
       }
 
@@ -547,6 +548,7 @@ var timeoutWriteLockQuery = function (self, options) {
             {w: self.lockCollection.writeConcern, new: true},
             function (err, doc) {
               if (err) { return emitError(self, err); }
+              if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
             }
           );
           return self.emit('timed-out');
@@ -558,6 +560,7 @@ var timeoutWriteLockQuery = function (self, options) {
             {new: true},
             function (err, doc) {
               if (err) { return emitError(self, err); }
+              if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
               self.emit('write-req-set');
           });
           return setTimeout(timeoutWriteLockQuery, self.pollingInterval, self, options);
