@@ -625,7 +625,7 @@ var releaseLock_24 = function () {
       } else {
 
         query = {files_id: self.fileId, read_locks: 1};
-        update = {$set: {read_locks: 0, expires: new Date(never), meta: null}};
+        update = {$set: {read_locks: 0, expires: new Date(), meta: null}};
 
         // Case for read_locks == 1
         self.collection.findAndModify(query, [], update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
@@ -658,7 +658,7 @@ var releaseLock_24 = function () {
   } else if (self.lockType[0] === 'w') {
 
     var query = {files_id: self.fileId, write_lock: true},
-        update = {$set: {write_lock: false, write_req: false, expires: new Date(never), meta: null}};
+        update = {$set: {write_lock: false, write_req: false, expires: new Date(), meta: null}};
 
     self.collection.findAndModify(query, [], update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
       if (err) { return emitError(self, err); }
