@@ -924,7 +924,7 @@ describe 'gridfs-locks', () ->
       setTimeout cb, Math.floor(Math.random()*t), p
 
     before (done) ->
-      lockColl = LockCollection db, { timeOut: 60, pollingInterval: 1, lockExpiration: 120 }
+      lockColl = LockCollection db, { timeOut: 60, pollingInterval: 2.5, lockExpiration: 120}
       lockColl.on 'ready', done
 
     beforeEach () ->
@@ -936,13 +936,13 @@ describe 'gridfs-locks', () ->
       for l in locksArray
         myTimeout Math.floor(10000*Math.random()), l, (l) ->
           l.obtainReadLock().on 'locked', (ld) ->
-            console.log "RL", released, ld.write_lock, ld.write_req, ld.read_locks
+            # console.log "RL", released, ld.write_lock, ld.write_req, ld.read_locks
             assert ld?
             myTimeout 5, l, (l) ->
               l.releaseLock().on 'released', (ld) ->
                 assert ld?
                 released++
-                console.log "RUL", released, ld.write_lock, ld.write_req, ld.read_locks
+                # console.log "RUL", released, ld.write_lock, ld.write_req, ld.read_locks
                 done() if released is numLocks
 
     it 'should accomodate hundreds of simultaneous writers on a resource', (done) ->
@@ -951,7 +951,7 @@ describe 'gridfs-locks', () ->
       for l, x in locksArray when x < numLocks*writeLockFraction
         myTimeout Math.floor(10000*Math.random()), l, (l) ->
           l.obtainWriteLock().on 'locked', (ld) ->
-            console.log "WL", released, ld.write_lock, ld.write_req, ld.read_locks
+            # console.log "WL", released, ld.write_lock, ld.write_req, ld.read_locks
             assert ld?
             assert.equal Math.floor(currentValue), currentValue
             currentValue += 0.5
@@ -960,17 +960,18 @@ describe 'gridfs-locks', () ->
               l.releaseLock().on 'released', (ld) ->
                 assert ld?
                 released++
-                console.log "WUL", released, ld.write_lock, ld.write_req, ld.read_locks
+                # console.log "WUL", released, ld.write_lock, ld.write_req, ld.read_locks
                 done() if released is numLocks*writeLockFraction
 
     it 'should accomodate hundreds of simultaneous readers/writers on a resource', (done) ->
       released = 0
       currentValue = 0
       for l, x in locksArray
-        myTimeout Math.floor(10000*Math.random()), l, (l) ->
+        # l.x = x
+        myTimeout Math.floor(15000*Math.random()), l, (l) ->
           if Math.random() <= writeLockFraction
             l.obtainWriteLock().on 'locked', (ld) ->
-              console.log "WL", new Date().toJSON(), released, JSON.stringify(ld), JSON.stringify(l.query), JSON.stringify(l.update)
+              # console.log "WL #{this.x}", new Date().toJSON(), released, JSON.stringify(ld)
               assert ld?
               assert ld.expires.getTime() > new Date().getTime() + 100000
               assert.equal Math.floor(currentValue), currentValue
@@ -980,11 +981,14 @@ describe 'gridfs-locks', () ->
                 l.releaseLock().on 'released', (ld) ->
                   assert ld?
                   released++
-                  console.log "WUL", new Date().toJSON(), released, JSON.stringify(ld)
+                  # console.log "WUL #{this.x}", new Date().toJSON(), released, JSON.stringify(ld)
                   done() if released is numLocks
+            l.on 'timed-out', () ->
+              released++
+              console.warn "Waiting for Write Lock timed out!"
           else
             l.obtainReadLock().on 'locked', (ld) ->
-              console.log "RL", new Date().toJSON(), released, JSON.stringify(ld), JSON.stringify(l.query), JSON.stringify(l.update)
+              # console.log "RL #{this.x}", new Date().toJSON(), released, JSON.stringify(ld)
               assert ld?
               assert ld.expires.getTime() > new Date().getTime() + 100000
               assert.equal Math.floor(currentValue), currentValue
@@ -992,8 +996,11 @@ describe 'gridfs-locks', () ->
                 l.releaseLock().on 'released', (ld) ->
                   assert ld?
                   released++
-                  console.log "RUL", new Date().toJSON(), released, JSON.stringify(ld)
+                  # console.log "RUL #{this.x}", new Date().toJSON(), released, JSON.stringify(ld)
                   done() if released is numLocks
+            l.on 'timed-out', (ld) ->
+              released++
+              console.warn "Waiting for Read Lock timed out!"
 
   describe 'testing with timeouts and expiration under load', () ->
 
@@ -1009,7 +1016,7 @@ describe 'gridfs-locks', () ->
       setTimeout cb, Math.floor(Math.random()*t), p
 
     before (done) ->
-      lockColl = LockCollection db, { timeOut: 10, pollingInterval: 1, lockExpiration: 5 }
+      lockColl = LockCollection db, { timeOut: 10, pollingInterval: 2.5, lockExpiration: 5 }
       lockColl.on 'ready', done
 
     beforeEach () ->
@@ -1022,7 +1029,7 @@ describe 'gridfs-locks', () ->
       expired = 0
       currentValue = 0
       for l, x in locksArray
-        myTimeout Math.floor(10000*Math.random()), l, (l) ->
+        myTimeout Math.floor(15000*Math.random()), l, (l) ->
           ex = false
           if Math.random() <= writeLockFraction
             l.obtainWriteLock().on 'locked', (ld) ->

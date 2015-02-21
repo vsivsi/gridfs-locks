@@ -77,8 +77,6 @@ var LockCollection = exports.LockCollection = function(db, options) {
       isMongoDriver20(collection, function (err, is20) {
         if (err) { return emitError(self, err); }
         self._isMongoDriver20 = is20;
-        console.log("Is 2.0???", self._isMongoDriver20);
-
         // Ensure unique files_id so there can only be one lock doc per file
         collection.ensureIndex([['files_id', 1]], {unique:true}, function(err, index) {
           if (err) { return emitError(self, err); }
@@ -240,7 +238,7 @@ Lock.prototype.releaseLock = function () {
     } else if (self.lockType[0] === 'w') {
 
       query = {files_id: self.fileId, write_lock: true},
-      update = {$set: {write_lock: false, meta: null}, $currentDate: { expires: true }};
+      update = {$set: {write_lock: false, write_req: false, meta: null}, $currentDate: { expires: true }};
 
     } else {
       return emitError(self, "Lock.releaseLock invalid lockType.");
@@ -273,7 +271,6 @@ Lock.prototype.releaseLock = function () {
           if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
         });
       }
-
       self.emit('released', doc);
     });
 
@@ -479,10 +476,10 @@ var timeoutReadLockQuery = function (self, options) {
     self.update,
     { w: self.lockCollection.writeConcern, new: true, upsert: true },
     function (err, doc) {
-      console.log("In query callback!", err, doc);
+      // console.log("In query callback!", err, doc);
       // if (err) { console.log("Error", err)}
       if (err && ((err.name !== 'MongoError') || (err.code !== 11000))) { return emitError(self, err); }
-      if (self.lockCollection._isMongoDriver20 && doc) { console.log("I think it's 2.0!!!"); doc = doc.value; }
+      if (self.lockCollection._isMongoDriver20 && doc) { doc = doc.value; }
       if (!doc) {
         if (new Date().getTime() - self.timeCreated >= self.timeOut) {
           return self.emit('timed-out');
@@ -661,7 +658,7 @@ var releaseLock_24 = function () {
   } else if (self.lockType[0] === 'w') {
 
     var query = {files_id: self.fileId, write_lock: true},
-        update = {$set: {write_lock: false, expires: new Date(never), meta: null}};
+        update = {$set: {write_lock: false, write_req: false, expires: new Date(never), meta: null}};
 
     self.collection.findAndModify(query, [], update, {w: self.lockCollection.writeConcern, new: true}, function (err, doc) {
       if (err) { return emitError(self, err); }

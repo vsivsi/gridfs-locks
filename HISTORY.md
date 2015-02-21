@@ -1,6 +1,7 @@
 ### 1.3.0
 
 - Added support for the new node.js 2.0.x native MongoDB driver
+- Write Locks now clear the `write_req` flag when released so that chained writes won't block all readers for long periods of time.
 
 ### 1.2.2
 
