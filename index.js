@@ -1,5 +1,5 @@
 /***********************************************************************
-     Copyright (C) 2014 by Vaughn Iverson
+     Copyright (C) 2014-2015 by Vaughn Iverson
      gridfs-locks is free software released under the MIT/X11 license.
      See included LICENSE file for details.
 ************************************************************************/
@@ -12,7 +12,7 @@ var isMongo26 = function (db, callback) {
   db.command({ buildInfo: 1 }, function (err, res) {
     if (err) { return callback(err); }
     if (res && res.versionArray) {
-      retval = (res.versionArray[0] == 2 && res.versionArray[1] >= 6);
+      retval = ((res.versionArray[0] == 2 && res.versionArray[1] >= 6) || res.versionArray[0] >= 3);
       return callback(null, retval);
     } else {
       return callback(new Error("MongoDB buildInfo returned invalid information"));

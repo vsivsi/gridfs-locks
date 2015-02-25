@@ -1,3 +1,7 @@
+### 1.2.4
+
+- Updated version test to recognize mongodb 3.0 as supporting mongo 2.6 queries
+
 ### 1.2.3
 
 - Fixed issue #3, failing unit tests under Mongodb 2.4.x, et al.
