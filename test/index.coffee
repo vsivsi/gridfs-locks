@@ -569,8 +569,8 @@ describe 'gridfs-locks', () ->
               assert ld?
               order += '1')
 
-    it "should give priority to a write request waiting on a write lock over a subsequent read request", (done) ->
-      expectedOrder = "112233"
+    it "should give priority to a read request waiting on a write lock over a subsequent write request", (done) ->
+      expectedOrder = "113322"
       order = ''
       lock1.obtainWriteLock().on 'locked', (ld) ->
         assert ld?
@@ -581,6 +581,8 @@ describe 'gridfs-locks', () ->
             lock2.releaseLock().on 'released', (ld) ->
               assert ld?
               order += '2'
+              assert.equal order, expectedOrder
+              done()
         ).once('write-req-set', () ->
             lock3.obtainReadLock().on 'locked', (ld) ->
               assert ld?
@@ -588,8 +590,6 @@ describe 'gridfs-locks', () ->
               lock3.releaseLock().on 'released', (ld) ->
                 assert ld?
                 order += '3'
-                assert.equal order, expectedOrder
-                done()
             lock1.releaseLock().on 'released', (ld) ->
               assert ld?
               order += '1')
