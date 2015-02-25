@@ -3,6 +3,14 @@
 - Added support for the new node.js 2.0.x native MongoDB driver
 - Write Locks now clear the `write_req` flag when released so that chained writes won't block all readers for long periods of time.
 
+### 1.2.4
+
+- Updated version test to recognize mongodb 3.0 as supporting mongo 2.6 queries
+
+### 1.2.3
+
+- Fixed issue #3, failing unit tests under Mongodb 2.4.x, et al.
+
 ### 1.2.2
 
 - Fixed issue #2, a bug that blocked all read locks when a program aborts with an outstanding write lock request, under MongoDB 2.6 only. Thanks to @cearl for reporting.
