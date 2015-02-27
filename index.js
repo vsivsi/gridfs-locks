@@ -430,7 +430,6 @@ var emitError = function (self, err) {
 var emitExpiredEvent = function () {
   var self = this;
   var heldLock = self.heldLock;
-  // console.log("expiring", heldLock);
   self.heldLock = null;
   self.expired = true
   self.emit('expired', heldLock);
@@ -476,8 +475,6 @@ var timeoutReadLockQuery = function (self, options) {
     self.update,
     { w: self.lockCollection.writeConcern, new: true, upsert: true },
     function (err, doc) {
-      // console.log("In query callback!", err, doc);
-      // if (err) { console.log("Error", err)}
       if (err && ((err.name !== 'MongoError') || (err.code !== 11000))) { return emitError(self, err); }
       if (self.lockCollection._isMongoDriver20 && doc && doc.hasOwnProperty('value')) { doc = doc.value; }
       if (!doc) {
@@ -533,7 +530,6 @@ var timeoutWriteLockQuery = function (self, options) {
     self.update,
     {w: self.lockCollection.writeConcern, new: true, upsert: true},
     function (err, doc) {
-      // if (err) { console.log("Error", err)}
       if (err && ((err.name !== 'MongoError') || (err.code !== 11000))) { return emitError(self, err); }
       if (self.lockCollection._isMongoDriver20 && doc && doc.hasOwnProperty('value')) { doc = doc.value; }
       if (doc) {
@@ -560,7 +556,7 @@ var timeoutWriteLockQuery = function (self, options) {
           );
           return self.emit('timed-out');
         } else {
-          // write_req gets set every time because claimed write locks and timed out write requests clear it
+          // write_req gets set every time because claimed/released write locks and timed out write requests clear it
           self.collection.findAndModify({files_id: self.fileId, write_req: false},
             [],
             {$set: {write_req: true}},
@@ -639,7 +635,6 @@ var releaseLock_24 = function () {
             return self.emit('released', doc);
           } else {
             // If another readLock released between the above two findAndModify calls they can both fail... so keep trying.
-            // console.log("Retrying to release read lock...");
             // Avoid an infinite loop when lock document no longer exists
             self.collection.findOne({files_id: self.fileId, read_locks: {$gt: 0}}, function (err, doc) {
               if (err) { return emitError(self, err); }
@@ -788,7 +783,6 @@ var timeoutReadLockQuery_24 = function (self, options) {
       if (self.lockCollection._isMongoDriver20 && doc && doc.hasOwnProperty('value')) { doc = doc.value; }
       if (!doc) {
         // Try again without trying to update the expire time
-        // console.log("Second try...");
         self.lockExpireTime = new Date(new Date().getTime() + (self.lockExpiration || never));
         self.query = {files_id: self.fileId, write_lock: false, write_req: false, expires: { $gt: self.lockExpireTime }};
         self.update = {$inc: {read_locks: 1, reads: 1}, $set: {meta: self.metaData}};
@@ -853,17 +847,19 @@ var timeoutWriteLockQuery_24 = function (self, options) {
           {w: self.lockCollection.writeConcern, new: true},
           function (err, doc) {
             if (err) { return emitError(self, err); }
+            if (self.lockCollection._isMongoDriver20 && doc && doc.hasOwnProperty('value')) { doc = doc.value; }
           }
         );
         return self.emit('timed-out');
       } else {
-        // write_req gets set every time because claimed write locks and timed out write requests clear it
+        // write_req gets set every time because claimed/released write locks and timed out write requests clear it
         self.collection.findAndModify({files_id: self.fileId, write_req: false},
           [],
           {$set: {write_req: true}},
           {new: true},
           function (err, doc) {
             if (err) { return emitError(self, err); }
+            if (self.lockCollection._isMongoDriver20 && doc && doc.hasOwnProperty('value')) { doc = doc.value; }
             self.emit('write-req-set');
         });
         return setTimeout(timeoutWriteLockQuery_24, self.pollingInterval, self, options);

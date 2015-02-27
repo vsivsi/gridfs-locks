@@ -584,15 +584,16 @@ describe 'gridfs-locks', () ->
               assert.equal order, expectedOrder
               done()
         ).once('write-req-set', () ->
+            lock1.releaseLock().on 'released', (ld) ->
+              assert ld?
+              order += '1'
             lock3.obtainReadLock().on 'locked', (ld) ->
               assert ld?
               order += '3'
               lock3.releaseLock().on 'released', (ld) ->
                 assert ld?
                 order += '3'
-            lock1.releaseLock().on 'released', (ld) ->
-              assert ld?
-              order += '1')
+        )
 
     it "should allow a read request to proceed when a prior write request times out", (done) ->
       expectedOrder = "1331"
@@ -936,13 +937,11 @@ describe 'gridfs-locks', () ->
       for l in locksArray
         myTimeout Math.floor(10000*Math.random()), l, (l) ->
           l.obtainReadLock().on 'locked', (ld) ->
-            # console.log "RL", released, ld.write_lock, ld.write_req, ld.read_locks
             assert ld?
             myTimeout 5, l, (l) ->
               l.releaseLock().on 'released', (ld) ->
                 assert ld?
                 released++
-                # console.log "RUL", released, ld.write_lock, ld.write_req, ld.read_locks
                 done() if released is numLocks
 
     it 'should accommodate hundreds of simultaneous writers on a resource', (done) ->
@@ -951,7 +950,6 @@ describe 'gridfs-locks', () ->
       for l, x in locksArray when x < numLocks*writeLockFraction
         myTimeout Math.floor(10000*Math.random()), l, (l) ->
           l.obtainWriteLock().on 'locked', (ld) ->
-            # console.log "WL", released, ld.write_lock, ld.write_req, ld.read_locks
             assert ld?
             assert.equal Math.floor(currentValue), currentValue
             currentValue += 0.5
@@ -960,7 +958,6 @@ describe 'gridfs-locks', () ->
               l.releaseLock().on 'released', (ld) ->
                 assert ld?
                 released++
-                # console.log "WUL", released, ld.write_lock, ld.write_req, ld.read_locks
                 done() if released is numLocks*writeLockFraction
 
     it 'should accommodate hundreds of simultaneous readers/writers on a resource', (done) ->
@@ -971,7 +968,6 @@ describe 'gridfs-locks', () ->
         myTimeout Math.floor(15000*Math.random()), l, (l) ->
           if Math.random() <= writeLockFraction
             l.obtainWriteLock().on 'locked', (ld) ->
-              # console.log "WL #{this.x}", new Date().toJSON(), released, JSON.stringify(ld)
               assert ld?
               assert ld.expires.getTime() > new Date().getTime() + 100000
               assert.equal Math.floor(currentValue), currentValue
@@ -981,14 +977,12 @@ describe 'gridfs-locks', () ->
                 l.releaseLock().on 'released', (ld) ->
                   assert ld?
                   released++
-                  # console.log "WUL #{this.x}", new Date().toJSON(), released, JSON.stringify(ld)
                   done() if released is numLocks
             l.on 'timed-out', () ->
               released++
               console.warn "Waiting for Write Lock timed out!"
           else
             l.obtainReadLock().on 'locked', (ld) ->
-              # console.log "RL #{this.x}", new Date().toJSON(), released, JSON.stringify(ld)
               assert ld?
               assert ld.expires.getTime() > new Date().getTime() + 100000
               assert.equal Math.floor(currentValue), currentValue
@@ -996,7 +990,6 @@ describe 'gridfs-locks', () ->
                 l.releaseLock().on 'released', (ld) ->
                   assert ld?
                   released++
-                  # console.log "RUL #{this.x}", new Date().toJSON(), released, JSON.stringify(ld)
                   done() if released is numLocks
             l.on 'timed-out', (ld) ->
               released++
@@ -1033,13 +1026,11 @@ describe 'gridfs-locks', () ->
           ex = false
           if Math.random() <= writeLockFraction
             l.obtainWriteLock().on 'locked', (ld) ->
-              # console.log "** WL", released+timedOut+expired, released, timedOut, expired, ld.write_lock, ld.write_req, ld.read_locks
               assert ld?
               assert.equal Math.floor(currentValue), currentValue
               l.on 'expired', () ->
                 ex = true
                 expired++
-                # console.log "** WEX", released+timedOut+expired, released, timedOut, expired, ld.write_lock, ld.write_req, ld.read_locks
                 done() if released+timedOut+expired is numLocks
               myTimeout 5, l, (l) ->
                 unless ex or Math.random() < deadLockFraction
@@ -1047,32 +1038,26 @@ describe 'gridfs-locks', () ->
                   l.releaseLock().on 'released', (ld) ->
                     assert ld?
                     released++
-                    # console.log "** WUL", released+timedOut+expired, released, timedOut, expired, ld.write_lock, ld.write_req, ld.read_locks
                     done() if released+timedOut+expired is numLocks
             l.on 'timed-out', () ->
               timedOut++
-              # console.log "** WTO", released+timedOut+expired, released, timedOut, expired
               done() if released+timedOut+expired is numLocks
           else
             l.obtainReadLock().on 'locked', (ld) ->
-              # console.log "RL", released+timedOut+expired, released, timedOut, expired, ld.write_lock, ld.write_req, ld.read_locks
               assert ld?
               assert.equal Math.floor(currentValue), currentValue
               l.on 'expired', () ->
                 ex = true
                 expired++
-                # console.log "REX", released+timedOut+expired, released, timedOut, expired
                 done() if released+timedOut+expired is numLocks
               myTimeout 5, l, (l) ->
                 unless ex or Math.random() < deadLockFraction
                   l.releaseLock().on 'released', (ld) ->
                     assert ld?
                     released++
-                    # console.log "RUL", released+timedOut+expired, released, timedOut, expired, ld.write_lock, ld.write_req, ld.read_locks
                     done() if released+timedOut+expired is numLocks
             l.on 'timed-out', () ->
               timedOut++
-              # console.log "RTO", released+timedOut+expired, released, timedOut, expired
               done() if released+timedOut+expired is numLocks
 
   after (done) ->
