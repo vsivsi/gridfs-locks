@@ -1,3 +1,8 @@
+### 1.3.1
+
+- Fixed failing unit test case
+- Updated mongodb driver version
+
 ### 1.3.0
 
 - Added support for the new node.js 2.0.x native MongoDB driver
