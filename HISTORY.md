@@ -1,3 +1,7 @@
+### 1.3.2
+
+- Fixed race issue when mutliple clients simultaneously create new LockCollections backed by the same mongodb server.
+
 ### 1.3.1
 
 - Fixed failing unit test case

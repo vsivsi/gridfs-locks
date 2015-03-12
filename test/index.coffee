@@ -82,6 +82,15 @@ describe 'gridfs-locks', () ->
         assert.equal lc.metaData, 16
         done()
 
+    it "should reliably support simultaneous client connections", (done) ->
+      lc1 = LockCollection db
+      lc2 = LockCollection db
+      lc1.on 'ready', (e) ->
+        assert.ifError e
+        lc2.on 'ready', (err) ->
+          assert.ifError e
+          done()
+
   describe 'Lock', () ->
 
     lockColl = null

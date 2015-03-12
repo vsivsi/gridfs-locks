@@ -20,14 +20,14 @@ var isMongo26 = function (db, callback) {
   });
 };
 
-var isMongoDriver20 = function (collection, callback) {
-  collection.insert({testdoc: true}, function (err, res) {
-    if (err) { return callback(err); }
-    collection.findAndRemove({testdoc: true}, [['testdoc', 1]], function (err, res) {
-      if (err) { return callback(err); }
-      callback(null, (res.ok === 1));
-    });
-  });
+var isMongoDriver20 = function (db) {
+  // This is probably not the best test, but officially I'm not sure 
+  // how to distinguish which driver is being used.
+  if (db.hasOwnProperty('s')) {
+    return true;
+  } else {
+    return false;
+  }
 };
 
 //
@@ -70,19 +70,14 @@ var LockCollection = exports.LockCollection = function(db, options) {
     if (err) { return emitError(self, err); }
 
     self._isMongo26 = is26;
+    self._isMongoDriver20 = isMongoDriver20(db);
 
     db.collection(collectionName, function(err, collection) {
       if (err) { return emitError(self, err); }
-
-      isMongoDriver20(collection, function (err, is20) {
+      collection.ensureIndex([['files_id', 1]], {unique:true}, function(err, index) {
         if (err) { return emitError(self, err); }
-        self._isMongoDriver20 = is20;
-        // Ensure unique files_id so there can only be one lock doc per file
-        collection.ensureIndex([['files_id', 1]], {unique:true}, function(err, index) {
-          if (err) { return emitError(self, err); }
-          self.collection = collection;
-          self.emit('ready');
-        });
+        self.collection = collection;
+        self.emit('ready');
       });
     });
   });
