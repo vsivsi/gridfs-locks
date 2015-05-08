@@ -464,10 +464,10 @@ describe 'gridfs-locks', () ->
 
       it "should fail to renew an unheld lock", (done) ->
         lock1.releaseLock().on 'released', (ld) ->
-          lock1.renewLock().on 'error', (e) ->
-            assert.throws (() -> throw e), /cannot renew an unheld lock/
+          lock1.renewLock().on 'renewed', (ld) ->
+            assert.equal ld, null
             done()
-        lock1.on 'renewed', () ->
+        lock1.on 'error', () ->
           assert false
 
   describe 'waiting for locks', () ->

@@ -296,7 +296,11 @@ lock.on('expires-soon',
   function() {
     lock.renewLock().on('renewed',
       function (ld) {
-        // Keep using lock
+        if (ld) {
+          // Keep using lock
+        } else {
+          // Lock couldn't be renewed
+        }
       }
     );
   }

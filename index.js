@@ -21,7 +21,7 @@ var isMongo26 = function (db, callback) {
 };
 
 var isMongoDriver20 = function (db) {
-  // This is probably not the best test, but officially I'm not sure 
+  // This is probably not the best test, but officially I'm not sure
   // how to distinguish which driver is being used.
   if (db.hasOwnProperty('s')) {
     return true;
@@ -295,7 +295,8 @@ Lock.prototype.renewLock = function() {
   if (self.lockCollection._isMongo26) {  // Begin Mongo 2.6 support
 
     if (!(self.heldLock)) {
-      return emitError(self, "Lock.renewLock cannot renew an unheld lock.");
+      setImmediate(function () { self.emit('renewed', null); });
+      return self
     }
 
     clearTimeout(self.expiresSoonTimeout);
@@ -310,7 +311,7 @@ Lock.prototype.renewLock = function() {
       function (err, doc) {
         if (err) { return emitError(self, err); }
         if (self.lockCollection._isMongoDriver20 && doc && doc.hasOwnProperty('value')) { doc = doc.value; }
-        if (doc == null) { return emitError(self, "Lock.renewLock document not found in collection"); }
+        if (doc == null) { return setImmediate(function () { self.emit('renewed', null); }); }
         self.heldLock = doc;
         self.expiresSoonTimeout = setTimeout(emitExpiresSoonEvent.bind(self, ''), 0.9*(self.lockExpireTime - new Date() - self.pollingInterval));
         self.expiredTimeout = setTimeout(emitExpiredEvent.bind(self, ''), (self.lockExpireTime - new Date() - self.pollingInterval));
@@ -671,7 +672,8 @@ var releaseLock_24 = function () {
 var renewLock_24 = function() {
   var self = this;
   if (!(self.heldLock)) {
-    return emitError(self, "Lock.renewLock cannot renew an unheld lock.");
+    setImmediate(function () { self.emit('renewed', null); });
+    return self
   }
 
   clearTimeout(self.expiresSoonTimeout);
@@ -691,7 +693,7 @@ var renewLock_24 = function() {
           if (err) { return emitError(self, err); }
           if (self.lockCollection._isMongoDriver20 && doc && doc.hasOwnProperty('value')) { doc = doc.value; }
           if (doc == null) {
-            return emitError(self, "Lock.renewLock document not found in collection");
+            return setImmediate(function () { self.emit('renewed', null); });
           }
           self.heldLock = doc;
           self.expiresSoonTimeout = setTimeout(emitExpiresSoonEvent.bind(self, ''), 0.9*(self.lockExpireTime - new Date() - self.pollingInterval));

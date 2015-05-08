@@ -1,3 +1,7 @@
+### 1.3.3
+
+- Fixed improper emitted errors in `lock.renewLock()` caused by race conditions with lock release / remove
+
 ### 1.3.2
 
 - Fixed race issue when mutliple clients simultaneously create new LockCollections backed by the same mongodb server.
