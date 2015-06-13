@@ -83,6 +83,7 @@ describe 'gridfs-locks', () ->
         done()
 
     it "should reliably support simultaneous client connections", (done) ->
+      this.timeout 5000
       lc1 = LockCollection db
       lc2 = LockCollection db
       lc1.on 'ready', (e) ->
@@ -1072,4 +1073,3 @@ describe 'gridfs-locks', () ->
   after (done) ->
     db.dropDatabase () ->
       db.close true, done
-
