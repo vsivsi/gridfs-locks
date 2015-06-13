@@ -1,5 +1,7 @@
 # gridfs-locks
 
+[![Build Status](https://travis-ci.org/vsivsi/gridfs-locks.svg)](https://travis-ci.org/vsivsi/gridfs-locks)
+
  `gridfs-locks` implements distributed and [fair read/write locking](https://en.wikipedia.org/wiki/Readers-writer_lock) based on [MongoDB](http://www.mongodb.org/), and is specifically designed to make MongoDB's [GridFS](http://docs.mongodb.org/manual/reference/gridfs/) file-store [safe for concurrent access](https://jira.mongodb.org/browse/NODE-157). It is a [node.js](http://nodejs.org/) [npm package](https://www.npmjs.org/package/gridfs-locks) built on top of the [native `mongodb` driver](https://www.npmjs.org/package/mongodb), and is compatible with the native [GridStore](https://github.com/mongodb/node-mongodb-native/blob/master/docs/gridfs.md) implementation.
 
 NOTE: if you use [gridfs-stream](https://www.npmjs.org/package/gridfs-stream) and need the locking capabilities of this package (and you probably do... see the "Why?" section at the bottom of this README), you should check out [gridfs-locking-stream](https://www.npmjs.org/package/gridfs-locking-stream). It is basically gridfs-stream + gridfs-locks.
@@ -342,4 +344,3 @@ Neither of these constraints is acceptable for most real applications likely to 
 [Redis](http://redis.io/) is an amazing tool and this task could be certainly be done using Redis, but in this case we are already using MongoDB and it also has the capability to get the job done, so adding an unnecessary dependency on another server technology is undesirable.
 
 I tailored this library to use MongoDB and mirror the GridFS data model in the hopes that it may inspire the MongoDB team to add official concurrency features to a future version of the GridFS specification. In the meantime, this library will hopefully suffice in making GridFS generally useful for real world applications. I welcome all feedback.
-

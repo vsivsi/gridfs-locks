@@ -1,3 +1,9 @@
+### 1.3.4
+
+- Added Travis CI automated Testing
+- Updated npm dependencies
+- Fixed license ID in package file
+
 ### 1.3.3
 
 - Fixed improper emitted errors in `lock.renewLock()` caused by race conditions with lock release / remove
